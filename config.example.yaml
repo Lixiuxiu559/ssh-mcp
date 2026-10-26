@@ -1,0 +1,59 @@
+# ssh-mcp 配置文件样例。复制为 config.yaml 后修改。
+# token/密码/口令建议用 ${ENV_VAR} 引用环境变量（缺变量时启动会直接报错）；
+# $$ 表示字面 $。
+
+server:
+  host: 0.0.0.0
+  port: 8808
+
+auth:
+  # 未配置任何用户时，服务启用内置默认管理员 admin/admin（引导账号，
+  # 启动日志会提示）；配置了用户后默认账号自动失效。
+  users:
+    - username: alice
+      token: ${SSHMCP_TOKEN_ALICE}
+      admin: true          # admin 可在网页上增删改配置与成员
+    - username: bob
+      token: ${SSHMCP_TOKEN_BOB}
+
+audit:
+  path: audit/audit.db     # SQLite 审计库
+  retention_days: 30       # 只保留最近 30 天，超期记录自动清理
+
+limits:
+  default_command_timeout_seconds: 60
+  max_command_timeout_seconds: 600
+  max_output_bytes: 65536        # exec stdout/stderr 各自截断阈值（字节）
+  max_read_file_bytes: 1048576   # read_file 上限 1MiB
+  max_upload_bytes: 2097152      # 上传上限 2MiB（MCP 传输层请求体仅 4MiB，
+                                 #   base64 放大 ~4/3；更大文件请走 scp/rsync）
+  max_download_bytes: 10485760   # 下载上限 10MiB
+  max_list_entries: 500          # list_dir 返回条目上限
+  max_sessions_per_server: 8     # 每台服务器并发通道上限（sshd MaxSessions 默认 10）
+
+servers:
+  - alias: web-1
+    host: 10.0.0.11
+    port: 22
+    username: deploy
+    description: Web 前端一号机
+    tags: [web, prod]
+    # known_hosts: /etc/ssh-mcp/known_hosts/web-1  # 不填则跳过主机指纹校验（有中间人风险，见 README）
+    credential:
+      type: private_key_file
+      path: /etc/ssh-mcp/keys/web-1.pem
+      # passphrase: ${WEB1_KEY_PASSPHRASE}
+
+  - alias: db-1
+    host: 10.0.0.20
+    username: ops
+    description: 数据库主库
+    tags: [db, prod]
+    credential:
+      type: password
+      password: ${DB1_PASSWORD}
+
+  # 其他凭据类型：
+  # credential:
+  #   type: private_key_inline
+  #   private_key: ${WEB2_PRIVATE_KEY}   # PEM 文本，可从环境变量注入

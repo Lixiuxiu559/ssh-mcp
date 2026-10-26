@@ -1,0 +1,18 @@
+config.yaml
+.env
+*.pem
+audit/
+# 审计数据库及 SQLite WAL / SHM / journal 文件（含目录外的默认文件名）
+audit.db
+audit.db-*
+keys/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+dist/
+node_modules/
+data/
+*.db
+*.db-*
+.DS_Store

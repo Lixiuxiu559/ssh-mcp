@@ -1,0 +1,26 @@
+# 构建上下文裁剪：凭据与本地数据绝不进镜像
+
+# 本地数据与凭据
+config.yaml
+keys/
+audit/
+*.pem
+.env
+known_hosts
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# 前端源码（构建产物 src/ssh_mcp/web/static/ 已随源码进镜像，无需 Node）
+webui/
+
+# 测试与开发文件
+tests/
+.git/
+.gitignore
