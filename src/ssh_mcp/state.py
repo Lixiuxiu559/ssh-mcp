@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from .audit import AuditLogger
+from .auth import IdentityStore
 from .config import ConfigFile, GatewayConfig, ServerEntry
 from .ssh.pool import ConnectionPool
 
@@ -27,6 +29,12 @@ class GatewayState:
             self._config.audit.path,
             retention_days=self._config.audit.retention_days,
         )
+        identity_path = self._config.auth.database
+        if not identity_path.is_absolute():
+            identity_path = cfg_file.path.resolve().parent / identity_path
+        self.identity = IdentityStore(identity_path, self._config.auth.session_hours)
+        self.identity.migrate_legacy(self._config.auth.users)
+        self._maintenance_task: asyncio.Task | None = None
         self.pool = ConnectionPool(self._get_config)
         self._lock = asyncio.Lock()
 
@@ -51,7 +59,11 @@ class GatewayState:
             config = await asyncio.to_thread(self._cfg_file.upsert_server, entry)
             self._config = config
             new = config.get_server(str(entry["alias"]))
-            if old is not None and new is not None and _entry_signature(old) != _entry_signature(new):
+            if (
+                old is not None
+                and new is not None
+                and _entry_signature(old) != _entry_signature(new)
+            ):
                 self.pool.invalidate(old.alias)
         return config
 
@@ -62,6 +74,39 @@ class GatewayState:
             self.pool.invalidate(alias)
         return config
 
+    async def flush_identity_events(self) -> None:
+        try:
+            pending = await asyncio.to_thread(self.identity.pending_events)
+            for event_id, record in pending:
+                result = await self.audit.log_person(record)
+                if result is False:
+                    break
+                await asyncio.to_thread(self.identity.acknowledge_event, event_id)
+        except Exception:
+            logging.getLogger(__name__).exception("人员审计投递失败，保留待重试事件")
+
+    async def _maintenance(self) -> None:
+        while True:
+            try:
+                await self.flush_identity_events()
+                await asyncio.to_thread(self.audit.prune)
+            except Exception:
+                logging.getLogger(__name__).exception("身份审计维护失败，将于下一周期重试")
+            await asyncio.sleep(60)
+
+    async def startup(self) -> None:
+        if self._maintenance_task is None or self._maintenance_task.done():
+            self._maintenance_task = asyncio.create_task(self._maintenance())
+
     async def shutdown(self) -> None:
+        if self._maintenance_task is not None:
+            self._maintenance_task.cancel()
+            try:
+                await self._maintenance_task
+            except asyncio.CancelledError:
+                pass
+            self._maintenance_task = None
+        await self.flush_identity_events()
         await self.pool.close_all()
         self.audit.close()
+        self.identity.close()

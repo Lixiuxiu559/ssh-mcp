@@ -1,57 +1,9 @@
-"""Web 管理端 API 测试：鉴权、CRUD、热更新、测试连接。"""
-
-from __future__ import annotations
+"""网页会话与 MCP 凭证隔离、同权管理、资源与双审计集成。"""
 
 import asyncssh
 import pytest
 from fastmcp import Client
 from httpx2 import ASGITransport, AsyncClient
-
-
-@pytest.fixture
-def app(gw):
-    return gw.mcp.http_app()
-
-
-async def request(app, method: str, path: str, token: str | None = None, **kwargs):
-    headers = kwargs.pop("headers", {})
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-        return await client.request(method, path, headers=headers, **kwargs)
-
-
-async def test_index_serves_html(app):
-    resp = await request(app, "GET", "/")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-    assert "ssh-mcp" in resp.text
-
-
-async def test_healthz_no_auth(app):
-    resp = await request(app, "GET", "/healthz")
-    assert resp.status_code == 200
-
-
-async def test_me_auth(app):
-    assert (await request(app, "GET", "/api/me")).status_code == 401
-    assert (await request(app, "GET", "/api/me", token="wrong")).status_code == 401
-    resp = await request(app, "GET", "/api/me", token="tok-alice")
-    assert resp.status_code == 200
-    assert resp.json() == {"username": "alice", "admin": True, "default_admin": False}
-    resp = await request(app, "GET", "/api/me", token="tok-bob")
-    assert resp.json() == {"username": "bob", "admin": False, "default_admin": False}
-
-
-async def test_list_servers_no_secrets(app):
-    resp = await request(app, "GET", "/api/servers", token="tok-bob")
-    assert resp.status_code == 200
-    servers = resp.json()["servers"]
-    assert {s["alias"] for s in servers} == {"web-1", "db-1"}
-    text = resp.text
-    assert "db-pw" not in text and "/keys/web-1.pem" not in text
-    assert servers[0]["credential_type"] in {"private_key_file", "password"}
-
 
 _NEW_SERVER = {
     "alias": "cache-1",
@@ -61,236 +13,276 @@ _NEW_SERVER = {
 }
 
 
-async def test_create_requires_admin(app):
-    resp = await request(app, "POST", "/api/servers", token="tok-bob", json=_NEW_SERVER)
-    assert resp.status_code == 403
+@pytest.fixture
+async def web(gw):
+    async with AsyncClient(
+        transport=ASGITransport(app=gw.mcp.http_app()), base_url="http://t"
+    ) as client:
+        yield client
 
 
-async def test_create_list_update_delete(app):
-    resp = await request(app, "POST", "/api/servers", token="tok-alice", json=_NEW_SERVER)
-    assert resp.status_code == 201
-    assert resp.json()["alias"] == "cache-1"
-
-    resp = await request(app, "GET", "/api/servers", token="tok-bob")
-    assert {s["alias"] for s in resp.json()["servers"]} == {"web-1", "db-1", "cache-1"}
-
-    # 更新：不传凭据则保留原值
-    resp = await request(
-        app, "PUT", "/api/servers/cache-1", token="tok-alice",
-        json={"alias": "cache-1", "host": "10.0.0.31", "username": "redis"},
+@pytest.fixture
+async def logged(web, gw):
+    response = await web.post(
+        "/api/auth/setup",
+        json={
+            "username": "alice",
+            "password": "alice-password",
+            "setup_key": gw.state.identity.setup_key_path.read_text(),
+        },
     )
-    assert resp.status_code == 200
-    assert resp.json()["host"] == "10.0.0.31"
-
-    resp = await request(app, "PUT", "/api/servers/missing", token="tok-alice", json={})
-    assert resp.status_code == 404
-
-    resp = await request(app, "DELETE", "/api/servers/cache-1", token="tok-alice")
-    assert resp.status_code == 200
-    resp = await request(app, "DELETE", "/api/servers/cache-1", token="tok-alice")
-    assert resp.status_code == 404
+    assert response.status_code == 201, response.text
+    web.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+    return web
 
 
-async def test_create_invalid_returns_400(app):
-    bad = {**_NEW_SERVER, "alias": "bad alias!"}
-    resp = await request(app, "POST", "/api/servers", token="tok-alice", json=bad)
-    assert resp.status_code == 400
+async def test_static_health_and_no_default_admin(web):
+    assert (await web.get("/")).status_code == 200
+    assert (await web.get("/healthz")).json() == {"ok": True}
+    assert (await web.get("/api/auth/status")).json() == {"setup_required": True}
+    assert (await web.get("/api/me")).status_code == 401
+    assert (
+        await web.get("/api/me", headers={"Authorization": "Bearer tok-alice"})
+    ).status_code == 401
+    assert (
+        await web.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    ).status_code == 401
 
 
-async def test_config_hot_reload_visible_to_tools(app, gw):
+async def test_setup_cookie_csrf_and_logout(logged):
+    me = (await logged.get("/api/me")).json()
+    assert me["user"]["username"] == "alice" and "admin" not in me["user"]
+    assert (await logged.post("/api/auth/setup", json={})).status_code == 400
+    assert (
+        await logged.post("/api/servers", json=_NEW_SERVER, headers={"X-CSRF-Token": "wrong"})
+    ).status_code == 403
+    assert (await logged.post("/api/auth/logout")).status_code == 200
+    assert (await logged.get("/api/me")).status_code == 401
+
+
+async def test_username_password_login_and_cookie_flags(web, logged):
+    await logged.post("/api/auth/logout")
+    bad = await web.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
+    assert bad.status_code == 401
+    good = await web.post(
+        "/api/auth/login", json={"username": "alice", "password": "alice-password"}
+    )
+    assert good.status_code == 200
+    cookie = good.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie
+    assert "password" not in good.text
+
+
+async def test_all_users_same_capabilities_and_session_revocation(logged):
+    alice_id = (await logged.get("/api/me")).json()["user"]["id"]
+    created = await logged.post("/api/users", json={"username": "bob", "password": "bob-password"})
+    assert created.status_code == 201
+    bob_id = created.json()["id"]
+    await logged.post("/api/auth/logout")
+    response = await logged.post(
+        "/api/auth/login", json={"username": "bob", "password": "bob-password"}
+    )
+    logged.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+    assert (await logged.post("/api/servers", json=_NEW_SERVER)).status_code == 201
+    assert (await logged.get("/api/users")).status_code == 200
+    assert (
+        await logged.patch(f"/api/users/{alice_id}", json={"enabled": False})
+    ).status_code == 200
+    assert (await logged.patch(f"/api/users/{bob_id}", json={"enabled": False})).status_code == 400
+    assert (
+        await logged.patch(f"/api/users/{bob_id}", json={"password": "changed-password"})
+    ).status_code == 200
+    assert (await logged.get("/api/me")).status_code == 401
+
+
+async def test_resource_crud_preserves_secret_and_hot_reload(logged, gw):
+    response = await logged.post("/api/servers", json=_NEW_SERVER)
+    assert response.status_code == 201 and "redis-pw" not in response.text
+    response = await logged.put(
+        "/api/servers/cache-1", json={"host": "10.0.0.31", "username": "redis"}
+    )
+    assert response.status_code == 200 and response.json()["host"] == "10.0.0.31"
+    assert (
+        gw.state.config.get_server("cache-1").credential.password.get_secret_value() == "redis-pw"
+    )
     async with Client(gw.mcp) as client:
-        before = await client.call_tool("list_servers", {})
-        assert len(before.data.servers) == 2
-
-        resp = await request(app, "POST", "/api/servers", token="tok-alice", json=_NEW_SERVER)
-        assert resp.status_code == 201
-
-        after = await client.call_tool("list_servers", {})
-        assert [s.alias for s in after.data.servers] == ["web-1", "db-1", "cache-1"]
-
-
-async def test_test_connection(app, gw):
-    resp = await request(app, "POST", "/api/servers/test", token="tok-bob", json=_NEW_SERVER)
-    assert resp.status_code == 403
-
-    resp = await request(app, "POST", "/api/servers/test", token="tok-alice", json=_NEW_SERVER)
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is True
-    # 测试连接走的是一次性新连接，不进连接池
-    assert gw.state.pool._conns == {}
-
-    resp = await request(
-        app, "POST", "/api/servers/test", token="tok-alice",
-        json={"alias": "x", "host": "h", "username": "u"},
-    )
-    assert resp.status_code == 400  # 缺凭据
+        result = await client.call_tool("list_servers", {})
+        assert len(result.data.servers) == 3
+    assert (await logged.delete("/api/servers/cache-1")).status_code == 200
+    assert (await logged.delete("/api/servers/cache-1")).status_code == 404
+    assert (await logged.put("/api/servers/missing", json={})).status_code == 404
+    response = await logged.post("/api/servers", json={**_NEW_SERVER, "alias": "bad alias"})
+    assert response.status_code == 400 and "redis-pw" not in response.text
+    response = await logged.get("/api/servers")
+    assert "db-pw" not in response.text and "/keys/web-1.pem" not in response.text
 
 
-async def test_test_connection_failure_reported(app, gw, harness):
+async def test_connection_and_key_operations(logged, gw, harness, tmp_path):
+    response = await logged.post("/api/servers/test", json=_NEW_SERVER)
+    assert response.json()["ok"] and gw.state.pool._conns == {}
     harness.fail_next_connect = OSError("refused")
-    resp = await request(app, "POST", "/api/servers/test", token="tok-alice", json=_NEW_SERVER)
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is False
-    assert "refused" in body["error"]
-
-
-async def test_upload_key_requires_admin(app):
-    resp = await request(
-        app, "POST", "/api/keys", token="tok-bob",
-        json={"alias": "web-1", "content": "-----BEGIN PRIVATE KEY-----\nxx\n-----END PRIVATE KEY-----"},
-    )
-    assert resp.status_code == 403
-
-
-async def test_upload_key_validates(app):
-    # 非法别名（防目录穿越 / 文件名污染）
-    for bad_alias in ["../evil", "a/b", "", "has space"]:
-        resp = await request(
-            app, "POST", "/api/keys", token="tok-alice",
-            json={"alias": bad_alias, "content": "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----"},
-        )
-        assert resp.status_code == 400, bad_alias
-
-    # 不是私钥内容
-    resp = await request(
-        app, "POST", "/api/keys", token="tok-alice",
-        json={"alias": "web-1", "content": "hello world"},
-    )
-    assert resp.status_code == 400
-
-
-async def test_upload_key_stores_file(app, gw, tmp_path):
+    response = await logged.post("/api/servers/test", json=_NEW_SERVER)
+    assert response.json()["ok"] is False
     key = asyncssh.generate_private_key("ssh-ed25519").export_private_key().decode()
-    resp = await request(
-        app, "POST", "/api/keys", token="tok-alice",
-        json={"alias": "web-1", "content": key},
+    response = await logged.post("/api/keys", json={"alias": "web-1", "content": key})
+    assert response.status_code == 200
+    assert (tmp_path / "keys/web-1.pem").read_text() == key
+    assert (tmp_path / "keys/web-1.pem").stat().st_mode & 0o777 == 0o600
+    for alias in ("../evil", "a/b", "has space", ""):
+        assert (
+            await logged.post("/api/keys", json={"alias": alias, "content": key})
+        ).status_code == 400
+    assert (
+        await logged.post("/api/keys", json={"alias": "web-1", "content": "not-key"})
+    ).status_code == 400
+
+
+async def test_token_management_and_old_token_independence(logged, gw):
+    old = await gw.mcp.auth.verify_token("tok-bob")
+    assert old is not None
+    created = await logged.post("/api/tokens", json={"name": "new-codex", "description": "CI"})
+    assert created.status_code == 201
+    value, item = created.json()["token"], created.json()["item"]
+    assert (await gw.mcp.auth.verify_token(value)).client_id == item["id"]
+    assert await gw.mcp.auth.verify_token("tok-bob") is not None
+    response = await logged.get("/api/tokens")
+    assert value not in response.text and "tok-bob" not in response.text
+    assert (
+        await logged.patch(f"/api/tokens/{item['id']}", json={"enabled": False})
+    ).status_code == 200
+    assert await gw.mcp.auth.verify_token(value) is None
+    assert (
+        await logged.patch(f"/api/tokens/{item['id']}", json={"enabled": True})
+    ).status_code == 200
+    assert (await logged.delete(f"/api/tokens/{item['id']}")).status_code == 200
+    assert await gw.mcp.auth.verify_token(value) is None
+    assert (
+        await logged.patch(f"/api/tokens/{item['id']}", json={"enabled": True})
+    ).status_code == 400
+    user_session = logged.cookies.get("ssh_mcp_session")
+    assert await gw.mcp.auth.verify_token(user_session) is None
+
+
+async def test_person_audit_attribution_and_no_secrets(logged):
+    created = await logged.post("/api/tokens", json={"name": "=formula"})
+    token, token_id = created.json()["token"], created.json()["item"]["id"]
+    await logged.patch(f"/api/tokens/{token_id}", json={"name": "renamed"})
+    await logged.post("/api/users", json={"username": "bob", "password": "second-password"})
+    response = await logged.get("/api/audit", params={"kind": "person"})
+    assert response.status_code == 200
+    records = response.json()["records"]
+    updates = [r for r in records if r["action"] == "token.update"]
+    assert updates[0]["username"] == "alice" and updates[0]["object_id"] == token_id
+    assert token not in response.text and "second-password" not in response.text
+    assert (await logged.get("/api/audit/export", params={"kind": "person"})).status_code == 200
+    assert (await logged.get("/api/audit", params={"kind": "invalid"})).status_code == 400
+
+
+async def test_bad_json_and_secret_errors_are_readable(logged):
+    response = await logged.post(
+        "/api/users", content="[1]", headers={"Content-Type": "application/json"}
     )
-    assert resp.status_code == 200
-    path = resp.json()["path"]
-    # 落在配置文件同级的 keys/ 目录，权限 0600
-    assert path == str(tmp_path / "keys" / "web-1.pem")
-    stored = tmp_path / "keys" / "web-1.pem"
-    assert stored.read_text(encoding="utf-8") == key
-    assert (stored.stat().st_mode & 0o777) == 0o600
-
-    # 落盘后的路径可直接用于测试连接（假连接层会返回成功）
-    resp = await request(
-        app, "POST", "/api/servers/test", token="tok-alice",
-        json={"alias": "web-1", "host": "10.0.0.11", "username": "deploy",
-              "credential": {"type": "private_key_file", "path": path}},
+    assert response.status_code == 400
+    response = await logged.post(
+        "/api/servers/test",
+        json={
+            "alias": "x",
+            "host": "h",
+            "username": "u",
+            "credential": {"type": "bad", "password": "sensitive-value"},
+        },
     )
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
+    assert response.status_code == 400 and "sensitive-value" not in response.text
 
 
-async def test_audit_endpoint(app, gw):
-    resp = await request(app, "GET", "/api/audit", token="tok-bob")
-    assert resp.status_code == 200
-    assert resp.json()["records"] == []
-
-
-async def test_default_admin_bootstrap(tmp_path, harness):
-    """未配置任何成员时内置 admin/admin；配置正式成员后默认账号自动失效。"""
-    from ssh_mcp.config import ConfigFile
-    from ssh_mcp.server import create_mcp
-
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "server:\n  host: 127.0.0.1\n  port: 8808\nservers: []\n", encoding="utf-8"
-    )
-    mcp, _ = create_mcp(ConfigFile(config_path))
-    app = mcp.http_app()
-
-    # 默认账号可登录且标记为 default_admin
-    resp = await request(app, "GET", "/api/me", token="admin")
-    assert resp.status_code == 200
-    assert resp.json() == {"username": "admin", "admin": True, "default_admin": True}
-
-    # 未配置 auth 时，成员列表展示当前生效的内置账号，便于直接改名/换 token
-    resp = await request(app, "GET", "/api/users", token="admin")
-    assert resp.json()["users"] == [{"username": "admin", "admin": True, "token": "admin"}]
-
-    # 设置正式成员后，默认账号失效，新账号生效
-    resp = await request(
-        app, "PUT", "/api/users", token="admin",
-        json={"users": [{"username": "ops", "token": "ops-tok", "admin": True}]},
-    )
-    assert resp.status_code == 200
-    assert (await request(app, "GET", "/api/me", token="admin")).status_code == 401
-    resp = await request(app, "GET", "/api/me", token="ops-tok")
-    assert resp.json() == {"username": "ops", "admin": True, "default_admin": False}
-
-
-async def test_users_requires_admin(app):
-    resp = await request(app, "GET", "/api/users", token="tok-bob")
-    assert resp.status_code == 403
-    resp = await request(app, "PUT", "/api/users", token="tok-bob", json={"users": []})
-    assert resp.status_code == 403
-
-
-async def test_users_list_returns_token(app):
-    resp = await request(app, "GET", "/api/users", token="tok-alice")
-    assert resp.status_code == 200
-    users = resp.json()["users"]
-    assert {u["username"] for u in users} == {"alice", "bob"}
-    by_name = {u["username"]: u for u in users}
-    # 返回 token 配置原文（${ENV} 引用本身），不展开真实值
-    assert by_name["alice"]["token"] == "${TEST_ALICE_TOKEN}"
-    assert by_name["alice"]["admin"] is True
-    assert by_name["bob"]["token"] == "${TEST_BOB_TOKEN}"
-    assert by_name["bob"]["admin"] is False
-    assert "tok-alice" not in resp.text
-
-
-async def test_users_update_keeps_and_changes_token(app, gw):
-    # bob 换新 token（明文）；alice 提交原引用 = 不变
-    payload = {
-        "users": [
-            {"username": "alice", "token": "${TEST_ALICE_TOKEN}", "admin": True},
-            {"username": "bob", "token": "bob-new-secret", "admin": False},
-        ]
+async def test_established_http_mcp_session_rejects_revoked_token(gw):
+    """真实 HTTP 中间件：已初始化的会话不能凭旧 token 绕过吊销。"""
+    app = gw.mcp.http_app(json_response=True, stateless_http=False)
+    headers = {
+        "Authorization": "Bearer tok-alice",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
     }
-    resp = await request(app, "PUT", "/api/users", token="tok-alice", json=payload)
-    assert resp.status_code == 200
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://localhost", headers=headers
+        ) as client,
+    ):
+        initialized = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "regression-client", "version": "1"},
+                },
+            },
+        )
+        assert initialized.status_code == 200, initialized.text
+        session = initialized.headers.get("mcp-session-id")
+        assert session
+        client.headers["Mcp-Session-Id"] = session
+        client.headers["MCP-Protocol-Version"] = "2025-06-18"
+        ready = await client.post(
+            "/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}
+        )
+        assert ready.status_code == 202
+        listed = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        assert listed.status_code == 200, listed.text
+        item = gw.state.identity.verify_token("tok-alice")
+        gw.state.identity.revoke_token(item["id"])
+        denied = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
+        assert denied.status_code == 401, denied.text
 
-    # alice 旧 token 仍有效（保留），bob 旧 token 失效、新 token 生效
-    assert (await request(app, "GET", "/api/me", token="tok-alice")).status_code == 200
-    assert (await request(app, "GET", "/api/me", token="tok-bob")).status_code == 401
-    assert (await request(app, "GET", "/api/me", token="bob-new-secret")).status_code == 200
 
-    # 配置文件里 bob 的新 token 落盘，alice 保留 ${ENV} 引用
-    raw = gw.config_path.read_text(encoding="utf-8")
-    assert "bob-new-secret" in raw
-    assert "${TEST_ALICE_TOKEN}" in raw
-
-
-async def test_users_update_validates(app):
-    # token 为空（含已有用户）
-    resp = await request(
-        app, "PUT", "/api/users", token="tok-alice",
-        json={"users": [{"username": "alice", "token": "", "admin": True}]},
+async def test_setup_normalizes_username_before_creating_session(web, gw):
+    response = await web.post(
+        "/api/auth/setup",
+        json={
+            "username": " review ",
+            "password": "correct-password",
+            "setup_key": gw.state.identity.setup_key_path.read_text(),
+        },
     )
-    assert resp.status_code == 400
-    assert "token 不能为空" in resp.json()["detail"]
+    assert response.status_code == 201, response.text
+    assert response.json()["user"]["username"] == "review"
+    assert (await web.get("/api/me")).status_code == 200
+    assert not gw.state.identity.setup_key_path.exists()
 
-    # 用户名重复（中文可读报错）
-    resp = await request(
-        app, "PUT", "/api/users", token="tok-alice",
-        json={"users": [
-            {"username": "a", "token": "t1"},
-            {"username": "a", "token": "t2"},
-        ]},
-    )
-    assert resp.status_code == 400
-    assert "用户名重复: a" in resp.json()["detail"]
 
-    # 空列表
-    resp = await request(app, "PUT", "/api/users", token="tok-alice", json={"users": []})
-    assert resp.status_code == 400
-    assert "至少" in resp.json()["detail"]
+async def test_resource_side_effect_has_running_then_cancelled_audit(logged, gw, monkeypatch):
+    import asyncio
+    import threading
 
-    # 校验失败不落盘：原有用户仍可用
-    assert (await request(app, "GET", "/api/me", token="tok-alice")).status_code == 200
-    assert (await request(app, "GET", "/api/me", token="tok-bob")).status_code == 200
+    entered = threading.Event()
+    release = threading.Event()
+    original_save = gw.cfg_file.save
+
+    def blocked_save():
+        entered.set()
+        release.wait(timeout=10)
+        original_save()
+
+    monkeypatch.setattr(gw.cfg_file, "save", blocked_save)
+    pending = asyncio.create_task(logged.post("/api/servers", json=_NEW_SERVER))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        rows, _ = gw.state.audit.query(kind="person", q="server.create")
+        started = next(row for row in rows if row["action"] == "server.create")
+        assert started["status"] == "running"
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        rows, _ = gw.state.audit.query(kind="person", q="server.create")
+        terminal = next(row for row in rows if row["event_id"] == started["event_id"])
+        assert terminal["status"] == "cancelled"
+        assert terminal["ts"] == started["ts"]
+        assert "结果未知" in terminal["error"]
+    finally:
+        release.set()
+        if not pending.done():
+            await pending

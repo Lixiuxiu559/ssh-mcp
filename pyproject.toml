@@ -1,11 +1,11 @@
 [project]
 name = "ssh-mcp"
-version = "0.1.3"
+version = "0.2.0"
 description = "团队共享 SSH 网关 MCP 服务：集中管理服务器凭据，agent 只说机器名即可操作"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=4.0.3,<5",
+    "fastmcp==4.1.4",
     # [bcrypt]：支持带口令的 OpenSSH 新格式私钥（无 bcrypt 时仅传统 PEM 口令私钥可用）
     "asyncssh[bcrypt]>=2.17,<3",
     "pyyaml>=6.0.1",

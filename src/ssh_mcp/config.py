@@ -18,7 +18,6 @@ import yaml
 from pydantic import (
     BaseModel,
     Field,
-    PrivateAttr,
     SecretStr,
     field_validator,
     model_validator,
@@ -57,7 +56,7 @@ def expand_env_vars(node: Any) -> Any:
 
 
 class ListenerConfig(BaseModel):
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8808
 
 
@@ -72,30 +71,26 @@ class UserEntry(BaseModel):
 
 
 class AuthConfig(BaseModel):
+    # users 仅用于旧 MCP token 的一次性迁移，不再是网页人员账号。
     users: list[UserEntry] = Field(default_factory=list)
-    _using_default_admin: bool = PrivateAttr(default=False)
+    database: Path = Path("data/service.db")
+    session_hours: int = Field(default=8, ge=1, le=168)
+    cookie_secure: bool = False
+    cookie_path: str = "/"
 
     @model_validator(mode="after")
     def _ensure_users(self) -> AuthConfig:
-        if not self.users:
-            # 未配置任何成员：内置默认管理员，保证首次启动能进入管理端配置其他成员
-            self.users = [
-                UserEntry(
-                    username=DEFAULT_ADMIN_USERNAME,
-                    token=DEFAULT_ADMIN_TOKEN,
-                    admin=True,
-                )
-            ]
-            self._using_default_admin = True
         names = [u.username for u in self.users]
         if len(names) != len(set(names)):
             raise ValueError("auth.users 中存在重复的 username")
+        if not self.cookie_path.startswith("/") or not self.cookie_path.endswith("/"):
+            raise ValueError("auth.cookie_path 必须以 / 开始和结束")
         return self
 
     @property
     def using_default_admin(self) -> bool:
-        """当前是否在使用内置默认管理员账号（admin/admin）。"""
-        return self._using_default_admin
+        """旧接口兼容标记：不再创建默认管理员。"""
+        return False
 
 
 class AuditConfig(BaseModel):
@@ -198,8 +193,7 @@ class GatewayConfig(BaseModel):
         ]
         for s in self.servers:
             lines.append(
-                f"  {s.alias} -> {s.username}@{s.host}:{s.port} "
-                f"(凭据: {s.credential.type})"
+                f"  {s.alias} -> {s.username}@{s.host}:{s.port} (凭据: {s.credential.type})"
             )
         return "\n".join(lines)
 
@@ -240,7 +234,20 @@ class ConfigFile:
 
     def load(self) -> GatewayConfig:
         try:
-            return GatewayConfig.model_validate(expand_env_vars(deepcopy(self.raw)))
+            config = GatewayConfig.model_validate(expand_env_vars(deepcopy(self.raw)))
+            base = self.path.resolve().parent
+            if not config.auth.database.is_absolute():
+                config.auth.database = base / config.auth.database
+            if not config.audit.path.is_absolute():
+                config.audit.path = base / config.audit.path
+            for server in config.servers:
+                if isinstance(server.credential, PrivateKeyFileSpec):
+                    path = Path(server.credential.path).expanduser()
+                    server.credential.path = str(path if path.is_absolute() else base / path)
+                if server.known_hosts:
+                    path = Path(server.known_hosts).expanduser()
+                    server.known_hosts = str(path if path.is_absolute() else base / path)
+            return config
         except ConfigError:
             raise
         except Exception as exc:
@@ -295,9 +302,7 @@ class ConfigFile:
         servers: list[Any] = self.raw.setdefault("servers", [])
         snapshot = deepcopy(servers)
         try:
-            idx = next(
-                (i for i, s in enumerate(servers) if s.get("alias") == alias), None
-            )
+            idx = next((i for i, s in enumerate(servers) if s.get("alias") == alias), None)
             if idx is not None and not entry.get("credential"):
                 # 编辑时未填凭据：保留原凭据（含 ${ENV} 引用）
                 entry = {**entry, "credential": servers[idx].get("credential")}

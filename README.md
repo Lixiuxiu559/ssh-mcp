@@ -1,204 +1,156 @@
-# ssh-mcp — 团队共享 SSH 网关 MCP 服务
+# ssh-mcp — SSH 链路工作台
 
-基于 [FastMCP](https://gofastmcp.com) 的团队级 SSH 网关：服务器清单与凭据集中托管，
-成员的 Claude Code / Codex 只需配置一个 URL 和个人 token，对话里直接说
-「在 web-1 上执行 df -h」即可，无需再关心 IP、账户、密钥。
+基于 Python FastMCP 的团队 SSH 网关：集中托管 Linux 服务器连接与凭据，为 MCP 客户端提供命令执行、文件操作和健康检查。
+0.2.0 将网页账号、MCP token 与操作审计分离，管理端采用 Linkage「链路工作台」设计。
 
-另提供**浏览器管理页**（token 登录）：管理员可在网页上增删改服务器配置、
-一键测试连接，保存后所有成员立即可用（无需重启）。
+## 账号、token 与首次登录
 
-## 功能
+- 网页使用用户名与密码登录，所有启用用户同权，不区分管理员与普通人员。
+- MCP token 在独立页面创建、命名、启停和吊销，只用于 `/mcp`，不能用它登录网页。
+- 新 token 仅创建时展示一次明文；后续只能查看名称、ID、状态与脱敏前缀。请在创建后保存客户端配置。
+- 网页使用 HttpOnly 会话 Cookie 和 CSRF 校验，密码修改或账号停用会撤销该账号会话。
+- 首次启动没有默认账号。终端会提示一次性初始化码文件路径；在本机读取该文件，在页面中输入初始化码、用户名和独立密码。
+- token 持久化在身份数据库中，重启或升级不自动失效；创建新 token 不会吊销旧 token。当前不设置自动到期；只有显式停用或吊销才拒绝调用。
 
-| MCP 工具 | 说明 |
-|---|---|
-| `list_servers` | 列出服务器清单（别名/主机/账户/标签/凭据类型，不含凭据） |
-| `exec_command` | 执行 shell 命令，返回 stdout/stderr/exit_code，带超时 |
-| `list_dir` | 浏览远端目录 |
-| `read_file` | 读取 UTF-8 文本文件（上限 1MiB，二进制请用 download_file） |
-| `upload_file` / `download_file` | 文件内容经参数传输（上限 10MiB），默认拒绝覆盖 |
-| `server_health` | 聚合健康检查：负载/内存/磁盘/CPU 核数/运行时长 |
+## 本地源码启动
 
-安全策略：**仅审计、不拦截**——每次工具调用写入 SQLite 审计库
-（时间/用户/服务器/命令/路径/耗时），默认保留最近 30 天、超期自动清理，
-网页上分页查看。
-
-## 部署（网关机）
-
-网关机需满足：能 SSH 直连所有目标服务器，安装 [uv](https://docs.astral.sh/uv/)。
+需要 Python 3.10+、uv。完整依赖兼容性以本服务锁文件与实际验证环境为准。
 
 ```bash
-cd ssh-mcp
-uv sync                        # 安装依赖（自动创建虚拟环境）
-
-cp config.example.yaml config.yaml   # 编辑服务器清单与用户 token
-cp .env.example .env                 # 填写各成员 token、凭据环境变量，然后 source .env
-chmod 600 config.yaml                # 配置里可能含明文凭据，收紧权限
-
-uv run ssh-mcp -c config.yaml        # 启动，默认监听 0.0.0.0:8808
+uv sync --locked
+uv run --locked ssh-mcp --init --config ./runtime/config.yaml
+uv run --locked ssh-mcp --config ./runtime/config.yaml
 ```
 
-生产环境建议用 systemd 常驻（`Restart=always`），并给 `audit/` 目录配置轮转。
+打开 `http://127.0.0.1:8808/`，按启动提示读取本地初始化码完成首位用户设置，再添加服务器和独立 MCP token。
+`--init` 不覆盖已有配置。可直接复制 `config.example.yaml`，其中没有默认真实资源或凭据。
 
-## Docker 部署
+可选参数：`--host`、`--port`、`--data-dir`。后者覆盖身份与审计目录；不自动移动已有数据。
+配置文件中的相对运行路径以配置所在目录解析；CLI 的 `--data-dir` 相对当前工作目录解析。
 
-镜像已包含前端构建产物，配置 / 密钥 / 审计数据通过挂载卷持久化。
+## Docker / Compose
 
-### 从镜像仓库部署（推荐）
+Compose 默认使用本地构建的 `ssh-mcp:0.2.0` 镜像，并只向宿主回环地址暴露 8808。
+此镜像标签是本次源码的构建标签，不表示已上传镜像仓库。
 
 ```bash
-mkdir -p /opt/ssh-mcp/keys /opt/ssh-mcp/audit
-cd /opt/ssh-mcp
-# 把源码仓库里的 config.example.yaml 复制成这里的 config.yaml 并编辑服务器清单；
-# 首次也可留空 auth.users —— 启动后会启用内置引导账号 admin/admin
-```
-
-`/opt/ssh-mcp/docker-compose.yml`：
-
-```yaml
-services:
-  ssh-mcp:
-    image: docker.io/lijx559/ssh-mcp:0.1.2
-    container_name: ssh-mcp
-    restart: unless-stopped
-    ports:
-      - "8808:8808"
-    # 整个目录挂载到 /data：网页改配置、上传 .pem、审计落库都写这里
-    volumes:
-      - /opt/ssh-mcp:/data
-    # 以 uid 1000 运行（镜像内 appuser），目录属主需对齐
-    user: "1000:1000"
-    environment:
-      TZ: Asia/Shanghai
-```
-
-```bash
-chown -R 1000:1000 /opt/ssh-mcp && chmod 600 /opt/ssh-mcp/config.yaml
+mkdir -p runtime
+# Linux 部署时确保目录由容器 UID/GID 可写；本地可指定宿主 UID/GID。
+export DOCKER_UID=$(id -u)
+export DOCKER_GID=$(id -g)
+docker compose build
+docker compose run --rm ssh-mcp ssh-mcp --init --config /data/config.yaml
 docker compose up -d
-docker compose ps           # 确认 healthy
+docker compose ps
+docker compose logs -f
 ```
 
-访问 `http://<网关机>:8808/`；经网关 nginx 子路径则是 `https://mcp.example.com/ssh-mcp/`（子路径统一约定见工作空间根 CLAUDE.md）。
-
-### 本地构建（开发 / 离线场景）
+Compose 将 `runtime/` 整体挂载到 `/data`。配置的原子写回要求挂目录；身份数据库、审计与上传密钥也在持久化目录中。
+容器内监听 `0.0.0.0`，以非 root 用户运行并检查 `/healthz`。
+生产使用镜像仓库时，将 `image` 改为已发布的精确版本，按实际部署删除 `build` 或保留作为本地构建选项。
 
 ```bash
-cd ssh-mcp
-DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d --build
+# 停止；默认不删除持久化的 runtime 目录
+docker compose down
+# 更新版本前备份 runtime，更新 image 标签后启动；本地源码更新则重新构建
+docker compose up -d --build
 ```
 
-### 更新到新版本
+## Python 包安装与 uvx
+
+无需 Node.js，wheel/sdist 均包含已构建的管理界面、默认配置与 CLI。先通过 `uv build` 构建版本化发行产物：
 
 ```bash
-cd /opt/ssh-mcp
-sed -i 's|ssh-mcp:0.1.1|ssh-mcp:0.1.2|' docker-compose.yml
-docker compose up -d        # 自动 pull 新镜像并重建容器
+uv build
+uv tool install ./dist/ssh_mcp-0.2.0-py3-none-any.whl
+ssh-mcp --init --config /absolute/path/ssh-mcp/config.yaml
+ssh-mcp --config /absolute/path/ssh-mcp/config.yaml
 ```
 
-配置、密钥、审计都在挂载卷里，更新容器不会丢数据。
-
-> 自行构建并推送镜像（amd64 → ACR）的完整流程见 [`CLAUDE.md`](CLAUDE.md)。
-
-### 常用命令
+从发行产物隔离运行：
 
 ```bash
-docker compose logs -f      # 看日志
-docker compose restart      # 重启（数据都在挂载卷里）
-docker compose down         # 停止
+uvx --from ./dist/ssh_mcp-0.2.0-py3-none-any.whl ssh-mcp --init --config /absolute/path/ssh-mcp/config.yaml
+uvx --from ./dist/ssh_mcp-0.2.0-py3-none-any.whl ssh-mcp --config /absolute/path/ssh-mcp/config.yaml
 ```
 
-### Docker 部署要点
+发布后，使用者可把本地 wheel 路径替换为服务实际 Release 的版本化 wheel 下载地址，或配置团队包索引后使用 `ssh-mcp==0.2.0`。
+目前不宣称该版本已发布到 PyPI 或 GitHub Release；发行地址由正式发布任务提供。
+uvx 不读取源码仓库的 `uv.lock`；FastMCP 精确固定为 4.1.4，其余依赖按包约束解析，生产复现优先使用锁文件或镜像。
+所有方式启动的是同一套完整 HTTP 服务，不把包安装目录或 uvx 缓存用作运行数据目录。
 
-- **必须挂「目录」而非单个文件**。配置保存走原子写（先写 `.tmp` 再 rename），
-  单文件 bind mount 会让临时文件与目标落在不同文件系统，rename 必然失败，
-  所以挂载的是整个目录（如 `/opt/ssh-mcp:/data`）
-- **容器内工作目录是 `/data`**，`config.yaml` 里的相对路径（`audit/audit.db`、
-  `keys/`）都落在挂载卷内
-- **`${ENV_VAR}` 引用的变量必须在容器环境里存在**，否则管理端保存配置会因校验
-  失败而报错（这是刻意设计的 fail-fast）。在 compose 的 `environment:` 里补齐
-- 容器以非 root 运行，`/healthz` 已配置为镜像 HEALTHCHECK
-- 被控服务器不在容器可达网络时，用 compose 的 `extra_hosts` 或自定义 network 处理
+## 运行配置与数据
 
-### 配置要点
+默认本地只监听 `127.0.0.1:8808`，外部访问用 `--host 0.0.0.0` 或配置显式开启。
+所有配置路径应指向可写的持久化目录：
 
-- **凭据类型**（每台服务器独立配置）：`private_key_file`（私钥文件路径）、
-  `private_key_inline`（内嵌 PEM）、`password`
-- **`${ENV_VAR}` 插值**：token/密码/口令建议引用环境变量；缺变量启动即报错；
-  `$$` 表示字面 `$`
-- **known_hosts**：不配置则跳过主机指纹校验（内网可接受，但存在中间人风险）。
-  更稳妥做法：网关机上 `ssh-keyscan` 采集各服务器指纹存成文件，按台配置
-- **用户与 token**：`auth.users` 中每项含 `username`、`token`、`admin`（管理员）。
-  未配置任何成员时，服务会启用**内置默认管理员 `admin` / `admin`** 作为引导账号
-  （启动日志有醒目提示），登录后请在管理页「成员与 Token」里改成正式成员——
-  一旦配置了成员，默认账号自动失效。成员的增删改在管理页保存后**即时热生效**，
-  无需重启
+| 数据 | 默认相对于配置目录的位置 |
+|---|---|
+| 人员、会话与 token 验证数据 | `data/service.db` |
+| 双审计数据库 | `audit/audit.db` |
+| 初始化码 | 启动终端显示的位置 |
+| 网页上传私钥 | `keys/` |
 
-### 浏览器管理页
+运行数据和秘密配置不入 Git，不打进镜像。`${ENV_VAR}` 可引用外部 SSH 凭据，缺变量立即报错；网页保存配置保留引用但会丢失 YAML 注释。
+默认不会校验未配置 `known_hosts` 的目标主机指纹；需要校验时为服务器配置对应文件。
 
-打开 `https://mcp.example.com/ssh-mcp/`（经网关 nginx 子路径；内网直连则是
-`http://<网关机>:8808/`），粘贴个人 token 登录（**仅 admin 可进入**）：
+网关子路径示例：
 
-- 服务器表格：新增 / 编辑 / 删除；编辑时凭据字段留空 = 保持原凭据；
-  「测试连接」用表单配置建一次性 SSH 连接验证，保存前就能确认凭据正确
-- 「成员与 Token」：增删成员、查看与重置 token、切换 admin 标志，保存即热生效
-- 最近审计记录展示（只读）
-
-## 成员接入
-
-MCP 端点 URL 二选一：**经网关（推荐）** `https://mcp.example.com/ssh-mcp/mcp`，
-或内网直连 `http://<网关机>:8808/mcp`。URL 写法约定见工作空间根 CLAUDE.md
-「网关子路径统一约定」。
-
-### Claude Code
-
-项目根目录 `.mcp.json`（或 `claude mcp add` 命令）：
-
-```json
-{
-  "mcpServers": {
-    "ssh": {
-      "type": "http",
-      "url": "https://mcp.example.com/ssh-mcp/mcp",
-      "headers": { "Authorization": "Bearer ${SSHMCP_TOKEN}" }
-    }
-  }
+```nginx
+location /ssh-mcp/ {
+    proxy_pass http://127.0.0.1:8808/;
+    proxy_http_version 1.1;
+    proxy_buffering off;
 }
 ```
 
-把个人 token 放进环境变量 `SSHMCP_TOKEN`，避免提交进 git。配置格式以
-[官方文档](https://docs.claude.com/en/docs/claude-code/mcp) 为准。
+`proxy_pass` 尾斜杠剥除前缀，前端资源/API 使用相对路径。HTTPS 部署设置 `auth.cookie_secure: true`，
+子路径部署建议设置 `auth.cookie_path: /ssh-mcp/`，本地根路径访问则用 `/`。
 
-### Codex
+## MCP 接入与工具
 
-`~/.codex/config.toml`（字段名以官方文档为准）：
+使用后台创建的 MCP token 为客户端配置 HTTP URL，例如 `https://<host>/ssh-mcp/mcp`，认证头为 `Authorization: Bearer <MCP_TOKEN>`。
+接入已部署服务无需成员再运行一份服务。
 
-```toml
-[mcp_servers.ssh]
-url = "https://mcp.example.com/ssh-mcp/mcp"
-http_headers = { "Authorization" = "Bearer <个人token>" }
-```
+- `list_servers`、`server_health`：资源清单与 Linux 健康状态。
+- `exec_command`：执行远程命令，支持超时和输出截断。
+- `list_dir`、`read_file`：浏览目录和读取 UTF-8 文本。
+- `upload_file`、`download_file`：有大小限制的文件传输。
 
-### 使用示例
+默认限制：上传 2 MiB、下载 10 MiB、读取 1 MiB、命令 stdout/stderr 各 64 KiB。大文件使用 scp/rsync。
+命令超时不保证结束 `nohup`/`setsid` 创建的远端进程；网络错误后的重试也不保证外部操作只执行一次。
 
-> 帮我看下 web-1 的磁盘占用情况
->
-> 把这段脚本上传到 db-1 的 /tmp/backup.sh 并执行
->
-> 读一下 web-1 的 /etc/nginx/nginx.conf
+## 两类审计
 
-## 开发
+- 人员操作：登录、人员变更、密码重置、token 创建/修改/启停/吊销、服务器与密钥操作、审计导出等。
+- MCP 调用：token ID 与名称快照、工具、执行时目标主机/端口/账号、命令或路径、结果、耗时与请求编号。
+
+两类记录分别筛选、分页、查看详情并导出 CSV，默认保留 30 天，运行期间定期清理。
+审计不保存密码、token 明文、私钥、上传文件正文或完整工具结果；命令里的敏感业务参数仍须按实际使用注意其记录范围。
+SQLite 为本机追溯存储，不承诺防篡改或远程操作与本地审计之间的全局原子性。
+
+## 从 0.1.x 升级
+
+1. 停止旧实例，备份完整配置、环境变量引用、keys 与审计数据库；有 WAL 时先正常停止或使用 SQLite 备份方式。
+2. 保留原配置路径和运行数据，使用新版本启动。配置中实际旧 `auth.users` token 首次迁移为独立 token，重复启动不会重新导入已吊销凭证。
+3. 旧 token 继续调用 MCP；网页不再接受旧 token，也不把旧 token 当登录密码。首次用本机初始化码建立新账号。
+4. 旧审计保留并标为 legacy；无法证明的历史 token 归属不会补造。停用创建者不自动停用独立 token。
+5. 验证服务器清单、已有 token、登录、双审计、子路径资源与数据权限，再开放访问。
+
+身份数据库是新结构；回滚前需恢复与旧程序兼容的配置与备份，不能删除唯一的身份库来“修复登录”。
+先在副本演练迁移；本次开发不会修改线上实例或已有真实配置。
+
+## 开发与验证
 
 ```bash
-uv sync
-uv run pytest            # 单元测试（Fake SSH 层 + in-memory Client）
-uv run ruff check .
+uv sync --locked
+uv run --locked pytest
+uv run --locked ruff check src tests
+cd webui
+npm ci
+npm run typecheck
+npm run build
 ```
 
-## 已知边界
-
-- 目标服务器为 Linux（健康检查解析 /proc 与 free/df 输出）
-- `exec_command` 超时会中断命令；`nohup`/`setsid` 启动的进程可能继续在远端运行
-- 文件操作有大小上限（见 `config.yaml` 的 `limits`）。**上传**尤其注意：内容经 MCP
-  请求体传输，传输层对请求体有 4MiB 硬上限（base64 还会放大 ~4/3），因此上传上限
-  默认 2MiB；更大的文件请走 scp/rsync。下载上限 10MiB（响应体不受此约束）
-- 配置文件由网页保存时会重写整个 YAML（注释会丢失）；`${ENV}` 引用会原样保留
-- 审计为本地 SQLite 库（默认保留 30 天，`audit.retention_days` 可调），如需防篡改请外接日志采集
+前端使用 React、Tailwind CSS v4、项目内 shadcn/ui 风格组件、Base UI、TanStack Table，构建产物输出到 Python 包的 `web/static/`。
+修改 UI 后必须重新构建再打包或构建镜像。服务自身源码、样式、组件与构建产物独立持有，不依赖父目录。

@@ -42,4 +42,4 @@ EXPOSE 8808
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8808/healthz').read()"]
 
-CMD ["ssh-mcp", "--config", "/data/config.yaml"]
+CMD ["ssh-mcp", "--config", "/data/config.yaml", "--host", "0.0.0.0"]

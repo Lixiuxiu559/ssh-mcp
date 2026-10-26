@@ -1,36 +1,14 @@
-# ssh-mcp 容器部署。
-# 用法：
-#   DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d --build
-# 说明：DOCKER_UID/GID 必须与宿主上 config.yaml / keys/ / audit/ 的属主一致，
-#       否则容器内的管理端无法写配置（网页热更新、上传 .pem 会失败）。
-
 services:
   ssh-mcp:
     build: .
-    image: ssh-mcp:latest
-    container_name: ssh-mcp
+    image: ssh-mcp:0.2.0
     restart: unless-stopped
-
-    # 以宿主用户身份运行，保证挂载卷可读写
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
-
     ports:
-      - "8808:8808"
-
-    # 管理端会写 config.yaml、上传 .pem 到 keys/、审计写 audit/ —— 三者都必须可写挂载。
-    # 注意必须挂「目录」而非单个文件：配置保存走原子写（先写 .tmp 再 rename），
-    # 单文件 bind mount 会让临时文件与目标落在不同文件系统上，rename 必然失败。
-    # config.yaml / keys/ / audit/ 都在项目根目录，因此直接挂载整个目录到 /data。
+      - "127.0.0.1:${SSHMCP_PORT:-8808}:8808"
     volumes:
-      - ./:/data
-
-    # 配置里的 ${VAR} 引用从这里注入（比在 config.yaml 里写明文 token 更安全）
+      - ./runtime:/data
     environment:
-      SSHMCP_TOKEN_ALICE: ${SSHMCP_TOKEN_ALICE:-}
-      SSHMCP_TOKEN_BOB: ${SSHMCP_TOKEN_BOB:-}
-      # 远端凭据也可用环境变量注入，例如：
-      # DB1_PASSWORD: ${DB1_PASSWORD:-}
-
-    # 容器内出站访问被控服务器；若目标在内网，按需调整网络
-    # extra_hosts:
-    #   - "web-1.internal:10.0.0.11"
+      TZ: Asia/Shanghai
+      # 外部服务器凭据按配置中的 ${VAR} 引用，在此显式注入。
+    stop_grace_period: 20s

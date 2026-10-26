@@ -4,6 +4,10 @@
 config.yaml
 keys/
 audit/
+data/
+runtime/
+*.db
+*.db-*
 *.pem
 .env
 known_hosts

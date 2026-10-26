@@ -1,28 +1,62 @@
-const TOKEN_KEY = 'ssh_mcp_token'
-
-export const getToken = () => localStorage.getItem(TOKEN_KEY) || ''
-export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t.trim())
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
-
-// 去掉前导 "/" 转成相对路径：页面挂在任何子路径（如 /ssh-mcp/）下，
-// 都会请求所在子路径下的 api，经网关剥前缀后命中后端的 /api/*
-export const apiUrl = (path: string) => path.replace(/^\//, '')
-
-export async function api(path: string, opts: RequestInit = {}): Promise<any> {
-  const resp = await fetch(apiUrl(path), {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + getToken(),
-      ...(opts.headers || {}),
-    },
-  })
-  if (resp.status === 401) {
-    clearToken()
-    location.reload()
-    throw new Error('token 无效，请重新登录')
+let csrfToken = "";
+export function setCsrfToken(token: string) {
+  csrfToken = token;
+}
+export function apiUrl(path: string) {
+  return path.replace(/^\/+/, "");
+}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
   }
-  const data = await resp.json().catch(() => ({}))
-  if (!resp.ok) throw new Error(data.detail || data.error || 'HTTP ' + resp.status)
-  return data
+}
+export async function response(
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+  if (options.body && !(options.body instanceof FormData))
+    headers.set("Content-Type", "application/json");
+  if (
+    options.method &&
+    !["GET", "HEAD"].includes(options.method.toUpperCase()) &&
+    csrfToken
+  ) {
+    headers.set("X-CSRF-Token", csrfToken);
+  }
+  const res = await fetch(apiUrl(path), {
+    ...options,
+    headers,
+    credentials: "same-origin",
+  });
+  if (!res.ok) {
+    let detail = `请求失败（${res.status}）`;
+    try {
+      const body = await res.json();
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      /* preserve status */
+    }
+    if (res.status === 401 && !path.includes("/auth/"))
+      window.dispatchEvent(new Event("session-expired"));
+    throw new ApiError(detail, res.status);
+  }
+  return res;
+}
+export async function api<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const res = await response(path, options);
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+export function json(method: string, body?: unknown): RequestInit {
+  return {
+    method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  };
 }

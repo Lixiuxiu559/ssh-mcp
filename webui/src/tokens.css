@@ -1,0 +1,151 @@
+/*
+ * MCP Hub · 链路工作台 / Linkage 1.0
+ * 唯一上游规范：./MASTER.md
+ * 各 MCP 服务迁移时复制本文件并独立持有；不要在运行时引用父目录。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 工作区与文字 */
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --subtle: #eaeff2;
+  --text: #17242b;
+  --secondary: #42555f;
+  --muted: #596b75;
+  --border: #dce3e7;
+  --border-strong: #71858f;
+
+  /* 海洋蓝：连接、健康与主操作 */
+  --accent: #146ed0;
+  --accent-hover: #0d5eaf;
+  --accent-soft: #e8f1fc;
+  --on-accent: #ffffff;
+
+  /* 靛蓝：调用、链接、当前路径与焦点 */
+  --action: #4b5fc4;
+  --action-soft: #eceefc;
+
+  /* 异常与警告 */
+  --danger: #c33d37;
+  --danger-soft: #fbe9e7;
+  --warning: #8b5a09;
+  --warning-soft: #f8efd9;
+
+  /* 导航与浮层 */
+  --nav: #15242b;
+  --nav-raised: #22343d;
+  --nav-text: #e6f0f2;
+  --nav-muted: #a9bbc3;
+  --overlay: rgba(11, 19, 24, 0.56);
+  --shadow: 0 16px 48px rgba(11, 19, 24, 0.18);
+
+  /* 字体 */
+  --font-ui:
+    "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  --font-heading: "Chivo", "Noto Sans SC", "PingFang SC", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+  /* 字号 */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-ui: 14px;
+  --text-body: 16px;
+  --text-h3: 18px;
+  --text-h2: 24px;
+  --text-h1: clamp(28px, 3vw, 36px);
+  --text-metric: clamp(24px, 2.4vw, 32px);
+
+  /* 4px 间距刻度 */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 48px;
+  --s10: 64px;
+
+  /* 形体与密度 */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --control-h: 36px;
+  --row-h: 44px;
+  --app-rail: 196px;
+
+  /* 动效 */
+  --fast: 140ms;
+  --normal: 200ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111a20;
+  --surface: #18242b;
+  --subtle: #22323b;
+  --text: #e8eff2;
+  --secondary: #bdcbd2;
+  --muted: #9fb1bc;
+  --border: #34454f;
+  --border-strong: #637984;
+  --accent: #72b7ff;
+  --accent-hover: #9acfff;
+  --accent-soft: #19364b;
+  --on-accent: #0a2236;
+  --action: #afbbff;
+  --action-soft: #293554;
+  --danger: #ff948d;
+  --danger-soft: #462a2b;
+  --warning: #e8b964;
+  --warning-soft: #3c3425;
+  --nav: #0b1318;
+  --nav-raised: #1b2b33;
+  --overlay: rgba(0, 0, 0, 0.68);
+  --shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fast: 0ms;
+    --normal: 0ms;
+  }
+}
+
+/* Tailwind CSS v4：让 dark: 与根节点 data-theme 保持一致。 */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * shadcn/ui 与 Tailwind 语义映射。
+ * 注意：上游 --accent 是主蓝；shadcn 的 accent 是悬停浅底，因此使用 --accent-soft。
+ */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--on-accent);
+  --color-secondary: var(--subtle);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--subtle);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--accent-soft);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--surface);
+  --color-warning: var(--warning);
+  --color-call: var(--action);
+  --color-call-foreground: var(--surface);
+  --color-border: var(--border);
+  --color-input: var(--border-strong);
+  --color-ring: var(--action);
+  --radius-md: var(--radius);
+}

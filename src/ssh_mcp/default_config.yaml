@@ -1,0 +1,13 @@
+# 所有相对路径以本配置文件所在目录为基准。
+server:
+  host: 127.0.0.1
+  port: 8808
+auth:
+  database: data/service.db
+  session_hours: 8
+  cookie_secure: false
+  cookie_path: /
+audit:
+  path: audit/audit.db
+  retention_days: 30
+servers: []

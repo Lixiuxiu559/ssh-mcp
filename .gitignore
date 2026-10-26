@@ -13,6 +13,7 @@ __pycache__/
 dist/
 node_modules/
 data/
+runtime/
 *.db
 *.db-*
 .DS_Store

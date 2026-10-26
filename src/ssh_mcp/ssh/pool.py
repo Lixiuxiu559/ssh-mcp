@@ -12,6 +12,7 @@ from typing import Any, TypeVar
 
 import asyncssh
 
+from ..audit import record_attempt
 from ..config import (
     GatewayConfig,
     PasswordSpec,
@@ -146,14 +147,27 @@ class ConnectionPool:
         """
         async with self._semaphore(alias):
             conn = await self.get_connection(alias)
+            await record_attempt(1, "started")
             try:
-                return await op(conn)
-            except _RETRYABLE:
+                result = await op(conn)
+            except _RETRYABLE as exc:
+                await record_attempt(1, "error", str(exc))
                 self.invalidate(alias)
                 conn = await self.get_connection(alias)
+                await record_attempt(2, "started")
                 try:
-                    return await op(conn)
-                except _RETRYABLE as exc2:
-                    raise CredentialConfigError(
-                        f"在 {alias} 上操作失败（重连后仍失败）: {exc2}"
-                    ) from exc2
+                    result = await op(conn)
+                except BaseException as exc2:
+                    await record_attempt(2, "error", str(exc2))
+                    if isinstance(exc2, _RETRYABLE):
+                        raise CredentialConfigError(
+                            f"在 {alias} 上操作失败（重连后仍失败）: {exc2}"
+                        ) from exc2
+                    raise
+                await record_attempt(2, "ok")
+                return result
+            except BaseException as exc:
+                await record_attempt(1, "error", str(exc))
+                raise
+            await record_attempt(1, "ok")
+            return result
