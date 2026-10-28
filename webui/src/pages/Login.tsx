@@ -3,15 +3,17 @@ import { ArrowRight, Link2, LockKeyhole, Terminal } from "lucide-react";
 import { api, json, setCsrfToken } from "../api";
 import type { Session } from "../types";
 import { Button } from "../components/ui/button";
-import { Field, Input } from "../components/ui/field";
+import { Field, Input, PasswordInput } from "../components/ui/field";
 import { Feedback } from "../components/ui/feedback";
 import { ThemeControl } from "../components/theme-provider";
 import { errorText } from "../lib/utils";
 export default function Login({
   setup,
+  notice,
   onLogin,
 }: {
   setup: boolean;
+  notice?: string;
   onLogin: (session: Session) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -95,16 +97,15 @@ export default function Login({
             </p>
           </div>
           <form onSubmit={submit} className="form-stack">
-            <Feedback message={error} />
+            <Feedback message={error || notice} />
             {setup && (
               <Field
                 label="初始化密钥"
                 hint="从服务启动日志提示的 setup.key 文件读取。"
               >
-                <Input
+                <PasswordInput
                   value={setupKey}
                   onChange={(e) => setSetupKey(e.target.value)}
-                  type="password"
                   autoComplete="off"
                   required
                   placeholder="服务端一次性初始化密钥"
@@ -125,10 +126,9 @@ export default function Login({
               label="密码"
               hint={setup ? "至少 10 位，请使用独立的登录密码。" : undefined}
             >
-              <Input
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                type="password"
                 autoComplete={setup ? "new-password" : "current-password"}
                 minLength={setup ? 10 : undefined}
                 maxLength={1024}
@@ -138,10 +138,9 @@ export default function Login({
             </Field>
             {setup && (
               <Field label="确认密码">
-                <Input
+                <PasswordInput
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
-                  type="password"
                   autoComplete="new-password"
                   required
                   placeholder="再次输入密码"

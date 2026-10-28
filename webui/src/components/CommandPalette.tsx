@@ -62,6 +62,7 @@ export function CommandPalette({
           ref={input}
           className="input"
           aria-label="搜索页面"
+          autoFocus
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

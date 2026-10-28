@@ -35,9 +35,17 @@ export default function App() {
   const [setup, setSetup] = useState(false);
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState("");
+  const [expired, setExpired] = useState(false);
   const [page, setPage] = useState<Page>("servers");
   const [command, setCommand] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const title = navigation.find((item) => item.id === page)?.label || "工作区";
+  function closeNav() {
+    setNavOpen(false);
+    requestAnimationFrame(() =>
+      document.getElementById("nav-toggle")?.focus(),
+    );
+  }
   async function boot() {
     setBooting(true);
     setError("");
@@ -51,6 +59,8 @@ export default function App() {
           setCsrfToken(value.csrf_token);
         } catch (error) {
           if (!(error instanceof ApiError && error.status === 401)) throw error;
+          // 首次进入或刷新时没有会话是正常状态，不显示"登录已过期"。
+          setExpired(false);
         }
       }
     } catch (error) {
@@ -63,13 +73,27 @@ export default function App() {
     void boot();
   }, []);
   useEffect(() => {
+    document.title = session
+      ? `${title} · SSH MCP 链路工作台`
+      : "登录 · SSH MCP 链路工作台";
+  }, [title, session]);
+  useEffect(() => {
     const expire = () => {
       setSession(null);
+      setExpired(true);
       setCsrfToken("");
     };
     window.addEventListener("session-expired", expire);
     return () => window.removeEventListener("session-expired", expire);
   }, []);
+  useEffect(() => {
+    if (!navOpen) return;
+    const handle = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeNav();
+    };
+    document.addEventListener("keydown", handle);
+    return () => document.removeEventListener("keydown", handle);
+  }, [navOpen]);
   useEffect(() => {
     if (!session) return;
     const handle = (event: KeyboardEvent) => {
@@ -99,9 +123,11 @@ export default function App() {
     return (
       <Login
         setup={setup}
+        notice={expired ? "登录已过期，请重新登录。" : ""}
         onLogin={(value) => {
           setSession(value);
           setSetup(false);
+          setExpired(false);
         }}
       />
     );
@@ -109,20 +135,25 @@ export default function App() {
     try {
       await api("/api/auth/logout", json("POST"));
       setSession(null);
+      setExpired(false);
       setCsrfToken("");
     } catch (error) {
       setError(errorText(error));
     }
   }
   function navigate(value: Page) {
+    const wasOpen = navOpen;
     setPage(value);
     setNavOpen(false);
     setError("");
+    if (wasOpen)
+      requestAnimationFrame(() =>
+        document.getElementById("nav-toggle")?.focus(),
+      );
   }
-  const title = navigation.find((item) => item.id === page)!.label;
   return (
     <div className={`workspace ${navOpen ? "nav-expanded" : ""}`}>
-      <aside className="sidebar">
+      <aside className="sidebar" id="workspace-nav" aria-label="工作区导航">
         <a className="sidebar-brand" href="./">
           <span className="brand-symbol">
             <Link2 size={21} />
@@ -162,7 +193,7 @@ export default function App() {
       {navOpen && (
         <button
           className="nav-overlay"
-          onClick={() => setNavOpen(false)}
+          onClick={closeNav}
           aria-label="关闭导航"
         />
       )}
@@ -172,8 +203,11 @@ export default function App() {
             <Button
               variant="quiet"
               className="icon-button mobile-nav"
+              id="nav-toggle"
               aria-label={navOpen ? "关闭导航" : "打开导航"}
-              onClick={() => setNavOpen(!navOpen)}
+              aria-expanded={navOpen}
+              aria-controls="workspace-nav"
+              onClick={() => (navOpen ? closeNav() : setNavOpen(true))}
             >
               {navOpen ? (
                 <PanelLeftClose size={18} />
@@ -182,12 +216,16 @@ export default function App() {
               )}
             </Button>
             <span className="breadcrumb">
-              SSH MCP <span>/</span> <strong>{title}</strong>
+              <span className="crumb-root">
+                SSH MCP <span className="crumb-sep">/</span>{" "}
+              </span>
+              <strong>{title}</strong>
             </span>
           </div>
           <div className="topbar-actions">
             <button
               className="command-trigger"
+              aria-label="搜索页面（⌘ K）"
               onClick={() => setCommand(true)}
             >
               <Search size={15} />
@@ -209,7 +247,7 @@ export default function App() {
           </div>
         </header>
         <main className="page-content">
-          <Feedback message={error} />
+          <Feedback message={error} onDismiss={() => setError("")} />
           {page === "servers" ? (
             <Servers />
           ) : page === "users" ? (

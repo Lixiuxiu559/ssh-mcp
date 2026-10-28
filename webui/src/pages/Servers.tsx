@@ -92,6 +92,7 @@ export default function Servers() {
         cell: ({ row }) => (
           <button
             className="name-link"
+            title={row.original.description || undefined}
             onClick={() => setDetails(row.original)}
           >
             <span className="node-icon">
@@ -99,7 +100,9 @@ export default function Servers() {
             </span>
             <span>
               <strong className="mono">{row.original.alias}</strong>
-              <small>{row.original.description || "未添加描述"}</small>
+              <small className="compact-hide">
+                {row.original.description || "未添加描述"}
+              </small>
             </span>
           </button>
         ),
@@ -223,8 +226,15 @@ export default function Servers() {
           </strong>
         </div>
       </div>
-      <Feedback message={error || actionError} />
-      <Feedback message={message} success />
+      <Feedback
+        message={actionError}
+        onDismiss={() => setActionError("")}
+      />
+      <Feedback
+        message={message}
+        success
+        onDismiss={() => setMessage("")}
+      />
       <section className="panel">
         <div className="panel-toolbar">
           <div className="search-input">
@@ -248,7 +258,21 @@ export default function Servers() {
           data={filtered}
           columns={columns}
           loading={loading}
+          error={error}
+          onRetry={reload}
           empty={query ? "没有匹配的服务器" : "还没有服务器"}
+          emptyAction={
+            query ? (
+              <Button variant="secondary" onClick={() => setQuery("")}>
+                清除搜索
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={() => setEditor(null)}>
+                <Plus size={15} />
+                添加服务器
+              </Button>
+            )
+          }
         />
         <div className="panel-footnote">
           连接状态来自手动测试，不代表持续健康监测。凭据仅用于网关连接，不向客户端返回。
@@ -284,7 +308,10 @@ export default function Servers() {
           确认删除 <strong className="mono">{deleting?.alias}</strong>？后续 MCP
           调用将无法再使用此别名。
         </p>
-        <Feedback message={actionError} />
+        <Feedback
+          message={actionError}
+          onDismiss={() => setActionError("")}
+        />
         <div className="dialog-actions right">
           <Button onClick={() => setDeleting(null)} disabled={!!busy}>
             取消
@@ -317,7 +344,9 @@ export default function Servers() {
                 <strong>运维客户端</strong>
                 <small>MCP 调用方</small>
               </div>
-              <span className="path-segment">MCP</span>
+              <span className="path-segment">
+                <span>MCP</span>
+              </span>
               <div>
                 <span className="node-icon">
                   <Cable size={18} />
@@ -325,7 +354,9 @@ export default function Servers() {
                 <strong>ssh-mcp</strong>
                 <small>SSH 网关</small>
               </div>
-              <span className="path-segment">SSH :{details.port}</span>
+              <span className="path-segment">
+                <span>SSH :{details.port}</span>
+              </span>
               <div>
                 <span className="node-icon">
                   <ServerIcon size={18} />

@@ -7,7 +7,7 @@ import { useResource } from "../lib/use-resource";
 import { errorText, formatTime } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Modal } from "../components/ui/dialog";
-import { Field, Input } from "../components/ui/field";
+import { Field, Input, PasswordInput } from "../components/ui/field";
 import { Feedback, Status } from "../components/ui/feedback";
 import { DataTable } from "../components/ui/data-table";
 import { Switch } from "../components/ui/switch";
@@ -79,8 +79,7 @@ function UserEditor({
           label={user ? "重置密码（留空保持原密码）" : "登录密码"}
           hint="至少 10 位。修改密码将使该用户的现有网页登录失效。"
         >
-          <Input
-            type="password"
+          <PasswordInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required={!user}
@@ -200,8 +199,7 @@ export default function UsersPage({ currentUser }: { currentUser: User }) {
           添加用户
         </Button>
       </div>
-      <Feedback message={error} />
-      <Feedback message={message} success />
+      <Feedback message={message} success onDismiss={() => setMessage("")} />
       <div className="info-strip">
         <UserRound size={17} />
         <span>
@@ -229,7 +227,21 @@ export default function UsersPage({ currentUser }: { currentUser: User }) {
           columns={columns}
           data={filtered}
           loading={loading}
-          empty="没有匹配的用户"
+          error={error}
+          onRetry={reload}
+          empty={query ? "没有匹配的用户" : "还没有用户"}
+          emptyAction={
+            query ? (
+              <Button variant="secondary" onClick={() => setQuery("")}>
+                清除搜索
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={() => setEditor(null)}>
+                <Plus size={15} />
+                添加用户
+              </Button>
+            )
+          }
         />
         <div className="panel-footnote">
           至少保留一个可登录账号。停用人员不会自动吊销其创建的服务 token。

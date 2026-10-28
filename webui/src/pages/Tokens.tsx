@@ -183,13 +183,18 @@ export default function Tokens() {
         accessorKey: "name",
         header: "Token",
         cell: ({ row }) => (
-          <div className="name-cell">
+          <div
+            className="name-cell"
+            title={row.original.description || undefined}
+          >
             <span className="node-icon">
               <KeyRound size={16} />
             </span>
             <span>
               <strong>{row.original.name}</strong>
-              <small>{row.original.description || "未添加用途说明"}</small>
+              <small className="compact-hide">
+                {row.original.description || "未添加用途说明"}
+              </small>
             </span>
           </div>
         ),
@@ -199,7 +204,8 @@ export default function Tokens() {
         header: "凭证标识",
         cell: ({ row }) => (
           <span title={row.original.id} className="mono small">
-            {row.original.prefix || row.original.id.slice(0, 12)}…
+            {row.original.prefix ||
+              `${row.original.id.slice(0, 12)}…`}
           </span>
         ),
       },
@@ -327,8 +333,15 @@ export default function Tokens() {
           </strong>
         </div>
       </div>
-      <Feedback message={error || actionError} />
-      <Feedback message={message} success />
+      <Feedback
+        message={actionError}
+        onDismiss={() => setActionError("")}
+      />
+      <Feedback
+        message={message}
+        success
+        onDismiss={() => setMessage("")}
+      />
       <section className="panel">
         <div className="panel-toolbar">
           <div className="search-input">
@@ -349,7 +362,21 @@ export default function Tokens() {
           columns={columns}
           data={filtered}
           loading={loading}
-          empty="还没有匹配的 token"
+          error={error}
+          onRetry={reload}
+          empty={query ? "没有匹配的 token" : "还没有 token"}
+          emptyAction={
+            query ? (
+              <Button variant="secondary" onClick={() => setQuery("")}>
+                清除搜索
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={() => setEditor(null)}>
+                <Plus size={15} />
+                创建 token
+              </Button>
+            )
+          }
         />
         <div className="panel-footnote">
           人员账号与服务 token
@@ -477,7 +504,10 @@ export default function Tokens() {
           确认吊销 <strong>{revoking?.name}</strong>
           ？使用此凭证的后续调用将被拒绝。
         </p>
-        <Feedback message={actionError} />
+        <Feedback
+          message={actionError}
+          onDismiss={() => setActionError("")}
+        />
         <div className="dialog-actions right">
           <Button disabled={busy} onClick={() => setRevoking(null)}>
             取消

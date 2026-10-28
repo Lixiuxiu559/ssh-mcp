@@ -3,7 +3,7 @@ import { Upload, Cable } from "lucide-react";
 import type { ServerEntry } from "../types";
 import { api, json } from "../api";
 import { Modal } from "./ui/dialog";
-import { Field, Input } from "./ui/field";
+import { Field, Input, PasswordInput } from "./ui/field";
 import { Button } from "./ui/button";
 import { Feedback } from "./ui/feedback";
 import { errorText } from "../lib/utils";
@@ -231,10 +231,22 @@ export function ServerEditor({
                 placeholder="粘贴 PEM 私钥"
                 spellCheck={false}
               />
+            ) : type === "password" ? (
+              <PasswordInput
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                required={
+                  !editing || type !== editing.credential_type || !!passphrase
+                }
+                autoComplete="new-password"
+                placeholder={
+                  editing ? "留空沿用原凭据" : "输入 SSH 密码"
+                }
+              />
             ) : (
               <Input
                 value={secret}
-                type={type === "password" ? "password" : "text"}
+                type="text"
                 onChange={(e) => setSecret(e.target.value)}
                 required={
                   !editing || type !== editing.credential_type || !!passphrase
@@ -243,9 +255,7 @@ export function ServerEditor({
                 placeholder={
                   editing
                     ? "留空沿用原凭据"
-                    : type === "password"
-                      ? "输入 SSH 密码"
-                      : "/data/keys/prod-app-01.pem"
+                    : "/data/keys/prod-app-01.pem"
                 }
               />
             )}
@@ -256,6 +266,7 @@ export function ServerEditor({
               {busy === "upload" ? "正在上传…" : "上传本地 PEM 私钥"}
               <input
                 type="file"
+                className="visually-hidden"
                 accept=".pem,.key"
                 disabled={!!busy}
                 onChange={(e) => {
@@ -267,8 +278,7 @@ export function ServerEditor({
           )}
           {type !== "password" && (
             <Field label="私钥口令（可选）">
-              <Input
-                type="password"
+              <PasswordInput
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 autoComplete="new-password"

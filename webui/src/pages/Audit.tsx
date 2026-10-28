@@ -219,6 +219,19 @@ export default function Audit({ kind }: { kind: AuditKind }) {
     [person],
   );
   const pages = Math.max(1, Math.ceil(data.total / pageSize));
+  const hasFilters = Boolean(
+    filters.q ||
+      filters.status ||
+      filters.server ||
+      filters.token_id ||
+      filters.user_id ||
+      filters.days !== "7",
+  );
+  function clearFilters() {
+    setDraft(initialFilters);
+    setFilters({ ...initialFilters });
+    setPage(0);
+  }
   return (
     <>
       <div className="page-heading">
@@ -238,7 +251,10 @@ export default function Audit({ kind }: { kind: AuditKind }) {
           {exporting ? "正在导出…" : "导出 CSV"}
         </Button>
       </div>
-      <Feedback message={error || exportError} />
+      <Feedback
+        message={exportError}
+        onDismiss={() => setExportError("")}
+      />
       <section className="panel">
         <form className="audit-filter" onSubmit={search}>
           <div className="search-input">
@@ -326,11 +342,7 @@ export default function Audit({ kind }: { kind: AuditKind }) {
             <Button
               type="button"
               variant="quiet"
-              onClick={() => {
-                setDraft(initialFilters);
-                setFilters({ ...initialFilters });
-                setPage(0);
-              }}
+              onClick={clearFilters}
               aria-label="清除审计筛选"
             >
               <X size={15} />
@@ -348,10 +360,20 @@ export default function Audit({ kind }: { kind: AuditKind }) {
         </form>
         <DataTable
           sortable={false}
+          stickyFirst={false}
           data={data.records}
           columns={columns}
           loading={loading}
+          error={error}
+          onRetry={reload}
           empty="当前条件下没有审计记录"
+          emptyAction={
+            hasFilters ? (
+              <Button variant="secondary" onClick={clearFilters}>
+                清除筛选
+              </Button>
+            ) : undefined
+          }
         />
         <div className="table-pagination">
           <span className="muted small">
