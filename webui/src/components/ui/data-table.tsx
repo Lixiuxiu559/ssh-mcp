@@ -50,7 +50,7 @@ export function DataTable<T>({
     getSortedRowModel: getSortedRowModel(),
   });
   const retry = onRetry ? (
-    <Button variant="quiet" onClick={onRetry} disabled={loading}>
+    <Button variant="secondary" onClick={onRetry} disabled={loading}>
       重试
     </Button>
   ) : null;

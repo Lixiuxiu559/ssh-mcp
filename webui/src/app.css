@@ -740,9 +740,11 @@
   background: var(--subtle);
   border-bottom: 1px solid var(--border);
 }
+.data-table .small {
+  white-space: nowrap;
+}
 .data-table td {
   min-height: var(--row-h);
-  height: var(--row-h);
   padding: 10px var(--s4);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
@@ -903,9 +905,6 @@
   background: var(--overlay);
   transition: opacity var(--normal) var(--ease-out);
 }
-.dialog-backdrop[data-starting-style] {
-  opacity: 0;
-}
 .dialog-popup {
   position: fixed;
   z-index: 101;
@@ -924,9 +923,14 @@
     opacity var(--normal) var(--ease-out),
     transform var(--normal) var(--ease-out);
 }
-.dialog-popup[data-starting-style] {
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.96);
+@media (prefers-reduced-motion: no-preference) {
+  .dialog-backdrop[data-starting-style] {
+    opacity: 0;
+  }
+  .dialog-popup[data-starting-style] {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
 }
 .dialog-wide {
   width: min(680px, calc(100vw - var(--s7)));
@@ -1358,11 +1362,14 @@ kbd {
     visibility: hidden;
     transition:
       transform var(--normal),
-      visibility var(--normal);
+      visibility 0s linear var(--normal);
   }
   .nav-expanded .sidebar {
     transform: translateX(0);
     visibility: visible;
+    transition:
+      transform var(--normal),
+      visibility 0s;
   }
   .nav-overlay {
     display: block;
@@ -1505,7 +1512,8 @@ kbd {
   .crumb-root {
     display: none;
   }
-  .compact-hide {
+  .compact-hide,
+  .data-table .compact-hide {
     display: none;
   }
   .page-heading {
