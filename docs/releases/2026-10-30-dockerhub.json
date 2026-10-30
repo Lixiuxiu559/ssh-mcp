@@ -1,0 +1,27 @@
+{
+  "published_at": "2026-10-30T11:01:00.509163+00:00",
+  "repository": "lijx559/ssh-mcp",
+  "version": "0.2.0",
+  "tags": [
+    "0.2.0",
+    "latest"
+  ],
+  "public": true,
+  "index_digest": "sha256:c9ba2f11cd56a3a01bfcbae4e67ad7c7c413d4effffe267ddfadcc45ed65037a",
+  "base_index_digest": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+  "source_revision": "0933116d746c21c4af18ec077806ca6610803d34",
+  "source_dirty": false,
+  "source_fingerprint": "1c4585e09909d82b59ee26345239a80b61ca4a9cc3eaa2f4cf0df6b4b1d0d28f",
+  "images": [
+    {
+      "platform": "linux/amd64",
+      "manifest_digest": "sha256:0cd7faafe14caeee8efd3bdf93c4873661598d16874dda8fad96e7a29f8ff0d3",
+      "config_digest": "sha256:c71a820e9f50137549850a40a7d3adeedfbe6603e7769b3eda69dbdb42f6ca27"
+    },
+    {
+      "platform": "linux/arm64",
+      "manifest_digest": "sha256:d60356d14e42fe37836a87093873811cb5374eebfb005c2b304e3dfc9e1b9a46",
+      "config_digest": "sha256:9269ac1a4d57f896026ccb3fdc4efdb079d986804d4c4aff8967f2dad8162142"
+    }
+  ]
+}

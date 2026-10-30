@@ -30,15 +30,16 @@ uv run --locked ssh-mcp --config ./runtime/config.yaml
 
 ## Docker / Compose
 
-Compose 默认使用本地构建的 `ssh-mcp:0.2.0` 镜像，并只向宿主回环地址暴露 8808。
-此镜像标签是本次源码的构建标签，不表示已上传镜像仓库。
+公开镜像：[lijx559/ssh-mcp](https://hub.docker.com/r/lijx559/ssh-mcp)，固定版本 `0.2.0` 和 `latest` 均支持 `linux/amd64` / `linux/arm64`，拉取时自动选择架构。
+Compose 默认拉取 `lijx559/ssh-mcp:0.2.0`，只向宿主回环地址暴露 8808。
 
 ```bash
 mkdir -p runtime
 # Linux 部署时确保目录由容器 UID/GID 可写；本地可指定宿主 UID/GID。
 export DOCKER_UID=$(id -u)
 export DOCKER_GID=$(id -g)
-docker compose build
+docker compose pull
+# 仅首次部署初始化；已有配置升级时跳过此行
 docker compose run --rm ssh-mcp ssh-mcp --init --config /data/config.yaml
 docker compose up -d
 docker compose ps
@@ -47,7 +48,7 @@ docker compose logs -f
 
 Compose 将 `runtime/` 整体挂载到 `/data`。配置的原子写回要求挂目录；身份数据库、审计与上传密钥也在持久化目录中。
 容器内监听 `0.0.0.0`，以非 root 用户运行并检查 `/healthz`。
-生产使用镜像仓库时，将 `image` 改为已发布的精确版本，按实际部署删除 `build` 或保留作为本地构建选项。
+`build: .` 保留为源码构建选项；本地改动使用 `docker compose up -d --build`。正式部署优先使用已发布的固定版本。
 
 ```bash
 # 停止；默认不删除持久化的 runtime 目录
