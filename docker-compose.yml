@@ -1,14 +1,15 @@
+name: ssh-mcp
 services:
   ssh-mcp:
-    build: .
-    image: lijx559/ssh-mcp:0.2.0
+    image: ${SSHMCP_IMAGE:-lijx559/ssh-mcp:0.2.0}
     restart: unless-stopped
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     ports:
-      - "127.0.0.1:${SSHMCP_PORT:-8808}:8808"
+      - "${SSHMCP_BIND_ADDRESS:-127.0.0.1}:${SSHMCP_PORT:-8808}:8808"
     volumes:
       - ./runtime:/data
+    env_file:
+      - .env
     environment:
-      TZ: Asia/Shanghai
-      # 外部服务器凭据按配置中的 ${VAR} 引用，在此显式注入。
+      TZ: ${TZ:-Asia/Shanghai}
     stop_grace_period: 20s

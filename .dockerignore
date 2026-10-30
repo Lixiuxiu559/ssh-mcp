@@ -28,3 +28,6 @@ webui/
 tests/
 .git/
 .gitignore
+
+# Local deployment backups
+backups/

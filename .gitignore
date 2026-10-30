@@ -17,3 +17,6 @@ runtime/
 *.db
 *.db-*
 .DS_Store
+
+# Local deployment backups
+backups/
