@@ -1,62 +1,55 @@
-/*
- * MCP Hub · 链路工作台 / Linkage 1.0
- * 唯一上游规范：./MASTER.md
- * 各 MCP 服务迁移时复制本文件并独立持有；不要在运行时引用父目录。
- */
+/* Modern Professional · 用户确认的八套马卡龙三色模板（2026-11-12）。 */
+@import "./palettes.css";
 
 :root {
   color-scheme: light;
-
-  /* 工作区与文字 */
-  --bg: #f4f6f8;
-  --surface: #ffffff;
-  --subtle: #eaeff2;
-  --text: #17242b;
-  --secondary: #42555f;
-  --muted: #596b75;
-  --border: #dce3e7;
-  --border-strong: #71858f;
-
-  /* 海洋蓝：连接、健康与主操作 */
-  --accent: #146ed0;
-  --accent-hover: #0d5eaf;
-  --accent-soft: #e8f1fc;
-  --on-accent: #ffffff;
-
-  /* 靛蓝：调用、链接、当前路径与焦点 */
-  --action: #4b5fc4;
-  --action-soft: #eceefc;
-
-  /* 异常与警告 */
-  --danger: #c33d37;
-  --danger-soft: #fbe9e7;
-  --warning: #8b5a09;
-  --warning-soft: #f8efd9;
-
-  /* 导航与浮层 */
-  --nav: #15242b;
-  --nav-raised: #22343d;
-  --nav-text: #e6f0f2;
-  --nav-muted: #a9bbc3;
-  --overlay: rgba(11, 19, 24, 0.56);
-  --shadow: 0 16px 48px rgba(11, 19, 24, 0.18);
+  --bg: var(--palette-paper);
+  --surface: var(--palette-paper);
+  --subtle: var(--palette-pastel);
+  --text: var(--palette-ink);
+  --secondary: var(--text);
+  --muted: var(--text);
+  --border: var(--palette-pastel);
+  --border-strong: var(--text);
+  --accent: var(--palette-pastel);
+  --accent-hover: var(--palette-paper);
+  --accent-soft: var(--subtle);
+  --on-accent: var(--palette-ink);
+  --action: var(--text);
+  --action-soft: var(--subtle);
+  --success: var(--text);
+  --success-soft: var(--subtle);
+  --success-text: var(--text);
+  --danger: var(--text);
+  --danger-soft: var(--subtle);
+  --danger-text: var(--text);
+  --warning: var(--text);
+  --warning-soft: var(--subtle);
+  --warning-text: var(--text);
+  --nav: var(--palette-pastel);
+  --nav-raised: var(--palette-paper);
+  --nav-text: var(--text);
+  --nav-muted: var(--text);
+  --overlay: var(--palette-pastel);
+  --shadow: none;
 
   /* 字体 */
   --font-ui:
-    "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
-    sans-serif;
-  --font-heading: "Chivo", "Noto Sans SC", "PingFang SC", sans-serif;
-  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    -apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI",
+    Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  --font-heading: var(--font-ui);
+  --font-mono: "SFMono-Regular", Consolas, monospace;
 
   /* 字号 */
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-ui: 14px;
+  --text-xs: 10px;
+  --text-sm: 12px;
+  --text-ui: 12px;
   --text-body: 16px;
-  --text-h3: 18px;
-  --text-h2: 24px;
-  --text-h1: clamp(28px, 3vw, 36px);
-  --text-metric: clamp(24px, 2.4vw, 32px);
+  --text-h3: 14px;
+  --text-h2: 16px;
+  --text-h1: 18px;
+  --text-metric: 24px;
 
   /* 4px 间距刻度 */
   --s1: 4px;
@@ -72,42 +65,32 @@
 
   /* 形体与密度 */
   --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 8px;
-  --control-h: 36px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --control-h: 28px;
+  --input-h: 32px;
+  --app-header-h: 56px;
+  --radius-shell: 20px;
   --row-h: 44px;
-  --app-rail: 196px;
+  --app-rail: 152px;
 
   /* 动效 */
   --fast: 140ms;
   --normal: 200ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --radius-pill: 999px;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #111a20;
-  --surface: #18242b;
-  --subtle: #22323b;
-  --text: #e8eff2;
-  --secondary: #bdcbd2;
-  --muted: #9fb1bc;
-  --border: #34454f;
-  --border-strong: #637984;
-  --accent: #72b7ff;
-  --accent-hover: #9acfff;
-  --accent-soft: #19364b;
-  --on-accent: #0a2236;
-  --action: #afbbff;
-  --action-soft: #293554;
-  --danger: #ff948d;
-  --danger-soft: #462a2b;
-  --warning: #e8b964;
-  --warning-soft: #3c3425;
-  --nav: #0b1318;
-  --nav-raised: #1b2b33;
-  --overlay: rgba(0, 0, 0, 0.68);
-  --shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
+  --bg: var(--palette-ink);
+  --surface: var(--palette-ink);
+  --subtle: var(--palette-ink);
+  --text: var(--palette-paper);
+  --border: var(--palette-pastel);
+  --accent-hover: var(--palette-paper);
+  --nav: var(--palette-ink);
+  --nav-raised: var(--palette-pastel);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -122,7 +105,7 @@
 
 /*
  * shadcn/ui 与 Tailwind 语义映射。
- * 注意：上游 --accent 是主蓝；shadcn 的 accent 是悬停浅底，因此使用 --accent-soft。
+ * 主操作与悬停底分别映射，避免组件主题混用。
  */
 @theme inline {
   --color-background: var(--bg);

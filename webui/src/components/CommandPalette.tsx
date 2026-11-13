@@ -3,9 +3,10 @@ import { Search, ArrowUp, ArrowDown, CornerDownLeft } from "lucide-react";
 import { Modal } from "./ui/dialog";
 import type { Page } from "../types";
 export const navigation: { id: Page; label: string; description: string }[] = [
-  { id: "servers", label: "服务器", description: "连接配置与目标主机" },
+  { id: "overview", label: "总览", description: "服务器、调用记录与最近事件" },
+  { id: "servers", label: "服务器管理", description: "连接配置与目标主机" },
   { id: "tokens", label: "MCP Token", description: "独立服务凭证与客户端接入" },
-  { id: "users", label: "用户管理", description: "登录账号与人员状态" },
+  { id: "users", label: "成员管理", description: "登录账号与人员状态" },
   {
     id: "mcp-audit",
     label: "MCP 调用审计",

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   Link2,
+  LayoutDashboard,
+  Boxes,
+  UserRound,
+  CircleCheck,
   Server,
   KeyRound,
   Users,
@@ -15,15 +19,19 @@ import { api, ApiError, json, setCsrfToken } from "./api";
 import type { Page, Session } from "./types";
 import Login from "./pages/Login";
 import Servers from "./pages/Servers";
+import Overview from "./pages/Overview";
 import UsersPage from "./pages/Users";
 import Tokens from "./pages/Tokens";
 import Audit from "./pages/Audit";
 import { Button } from "./components/ui/button";
 import { Feedback } from "./components/ui/feedback";
-import { ThemeControl } from "./components/theme-provider";
+import { ThemeControl, ThemeToggle } from "./components/theme-provider";
+import { Modal } from "./components/ui/dialog";
+import { useResource } from "./lib/use-resource";
 import { CommandPalette, navigation } from "./components/CommandPalette";
 import { errorText } from "./lib/utils";
 const icons = {
+  overview: LayoutDashboard,
   servers: Server,
   users: Users,
   tokens: KeyRound,
@@ -36,15 +44,15 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState("");
   const [expired, setExpired] = useState(false);
-  const [page, setPage] = useState<Page>("servers");
+  const [page, setPage] = useState<Page>("overview");
   const [command, setCommand] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const health = useResource<{ ok: boolean }>("/healthz", { ok: false });
   const [navOpen, setNavOpen] = useState(false);
   const title = navigation.find((item) => item.id === page)?.label || "工作区";
   function closeNav() {
     setNavOpen(false);
-    requestAnimationFrame(() =>
-      document.getElementById("nav-toggle")?.focus(),
-    );
+    requestAnimationFrame(() => document.getElementById("nav-toggle")?.focus());
   }
   async function boot() {
     setBooting(true);
@@ -74,8 +82,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.title = session
-      ? `${title} · SSH MCP 链路工作台`
-      : "登录 · SSH MCP 链路工作台";
+      ? `${title} · SSH MCP Console`
+      : "登录 · SSH MCP Console";
   }, [title, session]);
   useEffect(() => {
     const expire = () => {
@@ -153,116 +161,143 @@ export default function App() {
   }
   return (
     <div className={`workspace ${navOpen ? "nav-expanded" : ""}`}>
-      <aside className="sidebar" id="workspace-nav" aria-label="工作区导航">
-        <a className="sidebar-brand" href="./">
-          <span className="brand-symbol">
-            <Link2 size={21} />
-          </span>
-          <span>
-            <strong>链路</strong>
-            <small>SSH MCP</small>
-          </span>
-        </a>
-        <div className="sidebar-caption">工作空间</div>
-        <nav aria-label="主导航">
-          {navigation.map((item) => {
-            const Icon = icons[item.id];
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`nav-item ${page === item.id ? "current" : ""}`}
-                aria-current={page === item.id ? "page" : undefined}
-                onClick={() => navigate(item.id)}
-              >
-                <Icon size={17} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-        <div className="sidebar-bottom">
-          <span className="sidebar-service">
-            <span className="service-dot" />
-            SSH 网关服务
-          </span>
-          <p>连接 · 凭证 · 操作痕迹</p>
-          <small>Linkage 1.0</small>
+      <header className="console-header">
+        <div className="console-header-start">
+          <Button
+            variant="quiet"
+            className="icon-button mobile-nav"
+            id="nav-toggle"
+            aria-label={navOpen ? "关闭导航" : "打开导航"}
+            aria-expanded={navOpen}
+            aria-controls="workspace-nav"
+            onClick={() => (navOpen ? closeNav() : setNavOpen(true))}
+          >
+            {navOpen ? (
+              <PanelLeftClose size={16} />
+            ) : (
+              <PanelLeftOpen size={16} />
+            )}
+          </Button>
+          <a className="console-brand" href="./">
+            <span className="console-brand-icon">
+              <Boxes size={16} />
+            </span>
+            <span>
+              <strong>SSH MCP Gateway</strong>
+              <small>Infrastructure Console</small>
+            </span>
+          </a>
         </div>
-      </aside>
-      {navOpen && (
-        <button
-          className="nav-overlay"
-          onClick={closeNav}
-          aria-label="关闭导航"
-        />
-      )}
-      <div className="workspace-main">
-        <header className="topbar">
-          <div className="topbar-start">
-            <Button
-              variant="quiet"
-              className="icon-button mobile-nav"
-              id="nav-toggle"
-              aria-label={navOpen ? "关闭导航" : "打开导航"}
-              aria-expanded={navOpen}
-              aria-controls="workspace-nav"
-              onClick={() => (navOpen ? closeNav() : setNavOpen(true))}
-            >
-              {navOpen ? (
-                <PanelLeftClose size={18} />
-              ) : (
-                <PanelLeftOpen size={18} />
-              )}
-            </Button>
-            <span className="breadcrumb">
-              <span className="crumb-root">
-                SSH MCP <span className="crumb-sep">/</span>{" "}
-              </span>
-              <strong>{title}</strong>
-            </span>
+        <div className="console-header-actions">
+          <ThemeToggle />
+          <button
+            className="account-trigger"
+            onClick={() => setAccountOpen(true)}
+            aria-label="账号与偏好设置"
+          >
+            <UserRound size={14} />
+          </button>
+        </div>
+      </header>
+      <div className="console-body">
+        <aside className="sidebar" id="workspace-nav" aria-label="工作区导航">
+          <div className="sidebar-caption">工作空间</div>
+          <nav aria-label="主导航">
+            {navigation.map((item) => {
+              const Icon = icons[item.id];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`nav-item ${page === item.id ? "current" : ""}`}
+                  aria-current={page === item.id ? "page" : undefined}
+                  onClick={() => navigate(item.id)}
+                >
+                  <Icon size={14} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="sidebar-bottom">
+            <CircleCheck
+              size={14}
+              className={
+                health.data.ok && !health.error ? "success-text" : "muted"
+              }
+            />
+            <div>
+              <strong>
+                {health.data.ok && !health.error
+                  ? "网关运行正常"
+                  : "网关状态未知"}
+              </strong>
+              <small>SSH MCP · v0.2.0</small>
+            </div>
           </div>
-          <div className="topbar-actions">
-            <button
-              className="command-trigger"
-              aria-label="搜索页面（⌘ K）"
-              onClick={() => setCommand(true)}
-            >
-              <Search size={15} />
-              <span>搜索页面</span>
-              <kbd>⌘ K</kbd>
-            </button>
-            <ThemeControl />
-            <span className="member-name" title={session.user.username}>
-              {session.user.display_name || session.user.username}
-            </span>
-            <Button
-              variant="quiet"
-              className="icon-button"
-              onClick={() => void logout()}
-              aria-label="退出登录"
-            >
-              <LogOut size={17} />
-            </Button>
-          </div>
-        </header>
-        <main className="page-content">
-          <Feedback message={error} onDismiss={() => setError("")} />
-          {page === "servers" ? (
-            <Servers />
-          ) : page === "users" ? (
-            <UsersPage currentUser={session.user} />
-          ) : page === "tokens" ? (
-            <Tokens />
-          ) : (
-            <Audit key={page} kind={page === "mcp-audit" ? "mcp" : "person"} />
-          )}
-        </main>
-        <footer className="workspace-footer">
-          <span>SSH MCP 工作区</span>
-          <span>人员与服务凭证独立管理</span>
-        </footer>
+        </aside>
+        {navOpen && (
+          <button
+            className="nav-overlay"
+            onClick={closeNav}
+            aria-label="关闭导航"
+          />
+        )}
+        <div className="workspace-main">
+          <main className="page-content">
+            <Feedback message={error} onDismiss={() => setError("")} />
+            {page === "overview" ? (
+              <Overview
+                onNavigate={navigate}
+                healthy={health.data.ok && !health.error}
+              />
+            ) : page === "servers" ? (
+              <Servers />
+            ) : page === "users" ? (
+              <UsersPage currentUser={session.user} />
+            ) : page === "tokens" ? (
+              <Tokens />
+            ) : (
+              <Audit
+                key={page}
+                kind={page === "mcp-audit" ? "mcp" : "person"}
+              />
+            )}
+          </main>
+        </div>
       </div>
+      <Modal
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        title="账号与偏好设置"
+        description={session.user.display_name || session.user.username}
+      >
+        <div className="form-stack">
+          <div className="field">
+            <span className="field-label">界面主题</span>
+            <ThemeControl />
+          </div>
+          <Button
+            onClick={() => {
+              setAccountOpen(false);
+              setCommand(true);
+            }}
+          >
+            <Search size={14} />
+            快速前往 <kbd>⌘ K</kbd>
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setAccountOpen(false);
+              void logout();
+            }}
+          >
+            <LogOut size={14} />
+            退出登录
+          </Button>
+        </div>
+      </Modal>
       <CommandPalette
         open={command}
         onOpenChange={setCommand}

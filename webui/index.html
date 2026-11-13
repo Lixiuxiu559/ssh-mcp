@@ -1,25 +1,21 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="light" data-palette="blue">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>SSH MCP · 链路工作台</title>
     <script>
-      try {
-        const m = localStorage.getItem("linkage-theme") || "auto";
-        document.documentElement.dataset.theme =
-          m === "dark" ||
-          (m === "auto" && matchMedia("(prefers-color-scheme: dark)").matches)
-            ? "dark"
-            : "light";
-      } catch {
-        document.documentElement.dataset.theme = matchMedia(
-          "(prefers-color-scheme: dark)",
-        ).matches
-          ? "dark"
-          : "light";
-      }
+      (() => {
+        let mode = "auto";
+        try {
+          const saved = localStorage.getItem("linkage-theme");
+          if (saved === "light" || saved === "dark") mode = saved;
+        } catch { /* 偏好存储可选。 */ }
+        document.documentElement.dataset.theme = mode === "dark" ||
+          (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+        document.documentElement.dataset.palette = "blue";
+      })();
     </script>
   </head>
   <body>

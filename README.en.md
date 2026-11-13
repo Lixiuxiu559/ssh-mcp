@@ -30,7 +30,7 @@ A self-hosted SSH gateway for individuals and teams. Manage Linux hosts and cred
 | Remote operations | 7 MCP tools for commands, directories, text files, transfers, and host health. |
 | Separate credentials | Username/password web access and independently managed MCP tokens. |
 | Two audit trails | Track management actions and token calls against actual SSH targets; 30-day retention by default. |
-| Unified workspace | Linkage UI, light/dark/system themes, command palette, and responsive layouts. |
+| Unified workspace | A fixed sea-salt blue three-color palette, light/dark/system themes, command palette, and responsive layouts. |
 
 <a id="deploy"></a>
 
@@ -262,6 +262,8 @@ wheel/sdist includes default configuration and web assets. Local wheels can also
 <a id="development"></a>
 
 ## Development and project
+
+Use **Modern Professional** for all new or updated console pages. The service uses a fixed sea-salt blue three-color palette with light/dark/system modes. The [development guide](CLAUDE.md) defines colors, system fonts, layout, controls, and migration status. Historical screenshots and released images do not define the current design specification.
 
 ```bash
 uv sync --locked

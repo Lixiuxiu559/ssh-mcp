@@ -52,10 +52,10 @@ export default function Login({
       <header className="login-top">
         <a className="wordmark" href="./">
           <Link2 size={21} />
-          <strong>链路</strong>
-          <span>SSH MCP</span>
+          <strong>SSH MCP</strong>
+          <span>Gateway Console</span>
         </a>
-        <ThemeControl />
+        <div className="login-preferences"><ThemeControl /></div>
       </header>
       <main className="login-layout">
         <section className="login-context">
@@ -165,7 +165,7 @@ export default function Login({
         </section>
       </main>
       <footer className="login-footer">
-        SSH MCP<span>链路工作台 · Linkage 1.0</span>
+        SSH MCP<span>Gateway Console</span>
       </footer>
     </div>
   );

@@ -1,7 +1,11 @@
 # ssh-mcp 开发指引（0.2.0）
 
-本服务是独立 Python FastMCP 仓库。当前版本实现 Linkage UI、用户名密码登录、独立 MCP token 与双审计。
+本服务是独立 Python FastMCP 仓库。本地前端采用 Modern Professional（专业极简控制台），提供用户名密码登录、独立 MCP token 与双审计。
 工作空间的统一规范适用于新改动；本文件列出服务内部边界与可直接使用的命令。
+
+## Git 分支
+
+日常开发使用已有 `dev` 分支，`main` 保持稳定；创建其他分支需用户允许，合并、推送与发布按用户授权执行。
 
 ## 分层与契约
 
@@ -16,7 +20,7 @@ audit.py           人员事件、MCP调用开始/结束、重试尝试、legacy
 web/api.py         人员Cookie会话与CSRF管理API，不能接受MCP token登录
 ssh/pool.py        asyncssh缓存、并发限制、连接级故障重试一次与尝试审计
 tools/             SSH清单、健康、命令、文件操作；register(mcp)
-webui/             React / Tailwind4 / Base UI / TanStack Table / Linkage组件
+webui/             React / Tailwind4 / Base UI / TanStack Table / Modern Professional组件
 web/static/        随源码、wheel、sdist和镜像交付的前端构建产物
 ```
 
@@ -45,9 +49,15 @@ web/static/        随源码、wheel、sdist和镜像交付的前端构建产物
 
 ## 前端
 
-使用Linkage 1.0设计：石墨窄导航、实心面板、蓝色连接/靛色调用、4/6/8圆角、36px控件和44px表格行。
+本服务统一采用 Modern Professional（专业极简控制台），按用户指定的 MCP Gateway 原型实际渲染样式还原，不自行替换字体、色板或页面排列。
+使用系统字体、152px 侧栏、跨顶部品牌栏、12px 面板圆角、胶囊控件和18px页面标题。
+配色采用已确认的八套马卡龙三色模板，SSH 固定 D「海盐奶蓝」；配色仅开发时分配，服务 UI 不提供选择。
+每套只含底色/主色/文字色，浅深模式复用同组三色，不增加独立状态色、透明度混色或阴影；状态使用文字和图标。
+保留主题存储与组件交互契约；旧品牌名不再作为视觉规范。总览使用现有管理API展示真实统计与最近事件，不模拟在线状态或趋势。
+服务器连接结果来自本页手动检测，不代表持续健康监测；详情用独立内容页展示配置路径。
 令牌独立持有于webui/src/tokens.css；组件源码在components/ui。禁止恢复Ant Design、玻璃拟态或混合旧主题。
-主题为light/dark/auto，localStorage键linkage-theme，根节点data-theme输出实际主题，系统偏好变化及时跟随。
+主题为light/dark/auto，localStorage键linkage-theme仅为兼容既有偏好，根节点data-theme输出实际主题，系统偏好变化及时跟随。
+配色由服务内 `SERVICE_PALETTE` 固定分配，根节点 `data-palette` 输出；不读取浏览器配色偏好；模板文件已复制到服务内，不依赖父目录。
 API使用相对路径和人员Cookie，写请求带X-CSRF-Token；不要将MCP token放入localStorage。
 Base UI负责浮层焦点与键盘交互；TanStack Table负责表格。前后端契约变更必须同步types与API测试。
 
