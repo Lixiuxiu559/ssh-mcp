@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ArrowUp, ArrowDown, CornerDownLeft } from "lucide-react";
-import { Modal } from "./ui/dialog";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Group,
+  Kbd,
+  Stack,
+  Text,
+  TextInput,
+  UnstyledButton,
+} from "@mantine/core";
+import {
+  CornerDownLeft,
+  Search,
+} from "lucide-react";
+import { AppModal } from "./AppModal";
 import type { Page } from "../types";
+
 export const navigation: { id: Page; label: string; description: string }[] = [
   { id: "overview", label: "总览", description: "服务器、调用记录与最近事件" },
   { id: "servers", label: "服务器管理", description: "连接配置与目标主机" },
@@ -18,6 +31,7 @@ export const navigation: { id: Page; label: string; description: string }[] = [
     description: "账号、凭证与配置变更",
   },
 ];
+
 export function CommandPalette({
   open,
   onOpenChange,
@@ -29,7 +43,6 @@ export function CommandPalette({
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
-  const input = useRef<HTMLInputElement>(null);
   const results = useMemo(
     () =>
       navigation.filter((item) =>
@@ -43,7 +56,6 @@ export function CommandPalette({
     if (open) {
       setQuery("");
       setSelected(0);
-      requestAnimationFrame(() => input.current?.focus());
     }
   }, [open]);
   function navigate(page: Page) {
@@ -51,83 +63,91 @@ export function CommandPalette({
     onOpenChange(false);
   }
   return (
-    <Modal
-      open={open}
-      onOpenChange={onOpenChange}
+    <AppModal
+      opened={open}
+      onClose={() => onOpenChange(false)}
       title="快速前往"
       description="搜索工作区页面，使用方向键选择。"
+      size="sm"
     >
-      <div className="command-input">
-        <Search size={18} />
-        <input
-          ref={input}
-          className="input"
+      <Stack gap="sm">
+        <TextInput
+          data-autofocus
+          leftSection={<Search size={16} aria-hidden="true" />}
           aria-label="搜索页面"
-          autoFocus
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
+          onChange={(event) => {
+            setQuery(event.currentTarget.value);
             setSelected(0);
           }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setSelected((i) => Math.min(i + 1, results.length - 1));
-            }
-            if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setSelected((i) => Math.max(i - 1, 0));
-            }
-            if (e.key === "Enter" && results[selected]) {
-              e.preventDefault();
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setSelected((value) => Math.min(value + 1, results.length - 1));
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setSelected((value) => Math.max(value - 1, 0));
+            } else if (event.key === "Enter" && results[selected]) {
+              event.preventDefault();
               navigate(results[selected].id);
             }
           }}
+          role="combobox"
+          aria-expanded="true"
           aria-controls="command-results"
           aria-activedescendant={
             results[selected] ? `command-${results[selected].id}` : undefined
           }
-          role="combobox"
-          aria-expanded="true"
           autoComplete="off"
         />
-      </div>
-      <div
-        className="command-list"
-        id="command-results"
-        role="listbox"
-        aria-label="页面搜索结果"
-      >
-        {results.length ? (
-          results.map((item, i) => (
-            <button
-              type="button"
-              id={`command-${item.id}`}
-              key={item.id}
-              role="option"
-              aria-selected={i === selected}
-              className={i === selected ? "selected" : ""}
-              onMouseEnter={() => setSelected(i)}
-              onClick={() => navigate(item.id)}
-            >
-              <span>
-                <strong>{item.label}</strong>
-                <small>{item.description}</small>
-              </span>
-              <CornerDownLeft size={16} />
-            </button>
-          ))
-        ) : (
-          <p className="empty-inline">没有匹配页面，尝试其他关键词。</p>
-        )}
-      </div>
-      <div className="command-help">
-        <ArrowUp size={12} />
-        <ArrowDown size={12} />
-        选择
-        <CornerDownLeft size={12} />
-        打开<kbd>Esc</kbd>关闭
-      </div>
-    </Modal>
+        <Stack
+          gap={4}
+          role="listbox"
+          aria-label="页面搜索结果"
+        >
+          {results.length ? (
+            results.map((item, index) => (
+              <UnstyledButton
+                id={`command-${item.id}`}
+                key={item.id}
+                role="option"
+                aria-selected={index === selected}
+                onMouseEnter={() => setSelected(index)}
+                onClick={() => navigate(item.id)}
+                px="sm"
+                py={8}
+                style={{ borderRadius: "var(--mantine-radius-md)" }}
+                bg={index === selected ? "var(--mantine-color-default-hover)" : undefined}
+              >
+                <Group justify="space-between" wrap="nowrap">
+                  <Box>
+                    <Text size="sm" fw={600}>
+                      {item.label}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {item.description}
+                    </Text>
+                  </Box>
+                  <CornerDownLeft size={14} aria-hidden="true" opacity={0.5} />
+                </Group>
+              </UnstyledButton>
+            ))
+          ) : (
+            <Text size="sm" c="dimmed" ta="center" py="md">
+              没有匹配页面，尝试其他关键词。
+            </Text>
+          )}
+        </Stack>
+        <Group gap={6} c="dimmed">
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd>
+          <Text size="xs">选择</Text>
+          <Kbd>↵</Kbd>
+          <Text size="xs">打开</Text>
+          <Kbd>Esc</Kbd>
+          <Text size="xs">关闭</Text>
+        </Group>
+      </Stack>
+    </AppModal>
   );
 }

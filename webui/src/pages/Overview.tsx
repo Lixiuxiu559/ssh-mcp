@@ -2,16 +2,29 @@ import { useState } from "react";
 import {
   Activity,
   ArrowRight,
-  CircleCheck,
   CircleAlert,
+  CircleCheck,
   Network,
   Server,
 } from "lucide-react";
+import {
+  Badge,
+  Box,
+  Button,
+  Card,
+  Grid,
+  Group,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
 import type { AuditRecord, Page, ServerEntry, TokenEntry } from "../types";
 import { useResource } from "../lib/use-resource";
 import { formatTime } from "../lib/utils";
-import { Button } from "../components/ui/button";
-import { Feedback, Status } from "../components/ui/feedback";
+import { Feedback, Status } from "../components/Feedback";
+import { PageHeading } from "../components/PageHeading";
 
 interface AuditResult {
   records: AuditRecord[];
@@ -83,157 +96,213 @@ export default function Overview({
     tokens.reload();
     events.reload();
   }
+  const metrics = [
+    {
+      label: "服务器总数",
+      icon: Server,
+      value: number(servers.data.servers.length, servers),
+      hint: "已配置 SSH 目标",
+      danger: false,
+    },
+    {
+      label: "近 24h MCP 调用",
+      icon: Activity,
+      value: number(calls.data.total, calls),
+      hint: "最近 24 小时的调用记录",
+      danger: false,
+    },
+    {
+      label: "近 24h 执行失败",
+      icon: CircleAlert,
+      value: number(failures.data.total, failures),
+      hint:
+        !failures.error && !calls.error && !loading && calls.data.total
+          ? `执行失败占比 ${((failures.data.total / calls.data.total) * 100).toFixed(2)}%`
+          : "调用结果为失败的记录",
+      danger: true,
+    },
+    {
+      label: "有效 MCP Token",
+      icon: Network,
+      value: number(enabledTokens, tokens),
+      hint: "已启用且未吊销的凭证",
+      danger: false,
+    },
+  ];
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <h1>总览</h1>
-          <p>监控服务器连接和 MCP 工具调用</p>
-        </div>
-        <button
-          className={`status ${healthy ? "status-connected" : "status-offline"}`}
-          onClick={refresh}
-          disabled={loading}
-          aria-label="刷新总览数据"
-          title="刷新总览数据"
-        >
-          <CircleCheck size={12} />
-          {healthy ? "网关正常" : "状态未知"}
-        </button>
-      </div>
-      <Feedback message={error} />
-      <div className="overview-metrics" aria-busy={loading}>
-        <div className="metric-card">
-          <div className="metric-label">
-            服务器总数
-            <Server size={14} />
-          </div>
-          <strong>{number(servers.data.servers.length, servers)}</strong>
-          <p>已配置 SSH 目标</p>
-        </div>
-        <div className="metric-card">
-          <div className="metric-label">
-            近 24h MCP 调用
-            <Activity size={14} />
-          </div>
-          <strong>{number(calls.data.total, calls)}</strong>
-          <p>最近 24 小时的调用记录</p>
-        </div>
-        <div className="metric-card">
-          <div className="metric-label">
-            近 24h 执行失败
-            <CircleAlert size={14} />
-          </div>
-          <strong>{number(failures.data.total, failures)}</strong>
-          <p className="danger-text">
-            {!failures.error && !calls.error && !loading && calls.data.total
-              ? `执行失败占比 ${((failures.data.total / calls.data.total) * 100).toFixed(2)}%`
-              : "调用结果为失败的记录"}
-          </p>
-        </div>
-        <div className="metric-card">
-          <div className="metric-label">
-            有效 MCP Token
-            <Network size={14} />
-          </div>
-          <strong>{number(enabledTokens, tokens)}</strong>
-          <p>已启用且未吊销的凭证</p>
-        </div>
-      </div>
-      <section className="panel overview-calls">
-        <div className="section-heading">
-          <h2>最近 MCP 调用</h2>
-          <span className="tag">最近 24h</span>
-        </div>
-        <div className="table-scroll" aria-busy={calls.loading}>
-          <table className="data-table recent-calls">
-            <thead>
-              <tr>
-                <th>Token</th>
-                <th>目标服务器</th>
-                <th>工具</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calls.data.records.map((record) => (
-                <tr key={record.id}>
-                  <td>
-                    {record.token_name ||
-                      record.token_id ||
-                      record.user ||
-                      "历史调用"}
-                  </td>
-                  <td>{record.server || "网关"}</td>
-                  <td>{record.tool || "—"}</td>
-                  <td>
-                    <Status value={record.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!calls.data.records.length && (
-            <p className="empty-inline">
-              {calls.error
-                ? "加载失败，请刷新重试"
-                : calls.loading
-                  ? "正在读取…"
-                  : "最近 24 小时暂无调用记录"}
-            </p>
-          )}
-        </div>
-      </section>
-      <section className="panel overview-events">
-        <div className="section-heading">
-          <h2>最近事件</h2>
-          <Button variant="quiet" onClick={() => onNavigate("person-audit")}>
-            查看审计
-            <ArrowRight size={14} />
+      <PageHeading
+        title="总览"
+        description="监控服务器连接和 MCP 工具调用"
+        extra={
+          <Button
+            size="compact-sm"
+            variant="light"
+            color={healthy ? "green" : "gray"}
+            leftSection={<CircleCheck size={13} aria-hidden="true" />}
+            onClick={refresh}
+            disabled={loading}
+            aria-label="刷新总览数据"
+            title="刷新总览数据"
+          >
+            {healthy ? "网关正常" : "状态未知"}
           </Button>
-        </div>
-        <div className="event-list" aria-busy={events.loading}>
-          {events.data.records.map((record, index) => (
-            <div
-              className="event-item"
-              key={record.id || `${record.ts}-${index}`}
-            >
-              {record.status === "ok" ? (
-                <CircleCheck size={14} className="success-text" />
-              ) : (
-                <CircleAlert size={14} className="danger-text" />
-              )}
-              <div>
-                <p title={record.object_id || undefined}>
-                  {actions[record.action || ""] ||
-                    record.action ||
-                    "工作区操作"}
-                  {record.object_id &&
-                  !["user", "session"].includes(record.object_type || "")
-                    ? ` · ${record.object_id}`
-                    : ` · ${record.username || record.user || "未认证来源"}`}
-                </p>
-                <time dateTime={record.ts} title={formatTime(record.ts)}>
-                  {shortTime(record.ts)}
-                </time>
-              </div>
-              <Status value={record.status} />
-            </div>
-          ))}
-        </div>
-        {!events.data.records.length && (
-          <p className="empty-inline">
-            {events.error
-              ? "加载失败，请刷新重试"
-              : events.loading
-                ? "正在读取…"
-                : "暂无人员操作记录"}
-          </p>
-        )}
-      </section>
-      <Button className="overview-more" onClick={() => onNavigate("servers")}>
+        }
+      />
+      <Feedback message={error} />
+      <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="md" mb="lg">
+        {metrics.map((metric) => (
+          <Card key={metric.label} withBorder p="md" radius="md">
+            <Stack gap={4}>
+              <Group justify="space-between" wrap="nowrap">
+                <Text size="xs" c="dimmed" fw={600}>
+                  {metric.label}
+                </Text>
+                <metric.icon size={14} aria-hidden="true" />
+              </Group>
+              <Text fz={24} fw={700} lh={1.1}>
+                {metric.value}
+              </Text>
+              <Text
+                size="xs"
+                c={metric.danger && !metric.value.startsWith("—") ? "red" : "dimmed"}
+              >
+                {metric.hint}
+              </Text>
+            </Stack>
+          </Card>
+        ))}
+      </SimpleGrid>
+      <Grid gap="md" mb="md">
+        <Grid.Col span={{ base: 12, md: 7 }}>
+          <Card withBorder p="md" radius="md" h="100%">
+            <Group justify="space-between" mb="sm" wrap="nowrap">
+              <Title order={3}>最近 MCP 调用</Title>
+              <Badge variant="light" color="gray">
+                最近 24h
+              </Badge>
+            </Group>
+            <Table.ScrollContainer minWidth={420}>
+              <Table verticalSpacing="xs" highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Token</Table.Th>
+                    <Table.Th>目标服务器</Table.Th>
+                    <Table.Th>工具</Table.Th>
+                    <Table.Th>状态</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {calls.data.records.map((record) => (
+                    <Table.Tr key={record.id}>
+                      <Table.Td>
+                        {record.token_name ||
+                          record.token_id ||
+                          record.user ||
+                          "历史调用"}
+                      </Table.Td>
+                      <Table.Td>{record.server || "网关"}</Table.Td>
+                      <Table.Td>{record.tool || "—"}</Table.Td>
+                      <Table.Td>
+                        <Status value={record.status} />
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+            {!calls.data.records.length && (
+              <Text size="sm" c="dimmed" ta="center" py="md">
+                {calls.error
+                  ? "加载失败，请刷新重试"
+                  : calls.loading
+                    ? "正在读取…"
+                    : "最近 24 小时暂无调用记录"}
+              </Text>
+            )}
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, md: 5 }}>
+          <Card withBorder p="md" radius="md" h="100%">
+            <Group justify="space-between" mb="sm" wrap="nowrap">
+              <Title order={3}>最近事件</Title>
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                rightSection={<ArrowRight size={13} aria-hidden="true" />}
+                onClick={() => onNavigate("person-audit")}
+              >
+                查看审计
+              </Button>
+            </Group>
+            <Stack gap={0} aria-busy={events.loading}>
+              {events.data.records.map((record, index) => (
+                <Group
+                  key={record.id || `${record.ts}-${index}`}
+                  justify="space-between"
+                  wrap="nowrap"
+                  py="xs"
+                  gap="sm"
+                >
+                  <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                    {record.status === "ok" ? (
+                      <CircleCheck
+                        size={15}
+                        aria-hidden="true"
+                        color="var(--mantine-color-green-6)"
+                        style={{ flexShrink: 0 }}
+                      />
+                    ) : (
+                      <CircleAlert
+                        size={15}
+                        aria-hidden="true"
+                        color="var(--mantine-color-red-6)"
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                    <Box style={{ minWidth: 0 }}>
+                      <Text size="sm" truncate="end" title={record.object_id || undefined}>
+                        {actions[record.action || ""] ||
+                          record.action ||
+                          "工作区操作"}
+                        {record.object_id &&
+                        !["user", "session"].includes(record.object_type || "")
+                          ? ` · ${record.object_id}`
+                          : ` · ${record.username || record.user || "未认证来源"}`}
+                      </Text>
+                      <Text
+                        size="xs"
+                        c="dimmed"
+                        component="time"
+                        dateTime={record.ts}
+                        title={formatTime(record.ts)}
+                      >
+                        {shortTime(record.ts)}
+                      </Text>
+                    </Box>
+                  </Group>
+                  <Status value={record.status} />
+                </Group>
+              ))}
+            </Stack>
+            {!events.data.records.length && (
+              <Text size="sm" c="dimmed" ta="center" py="md">
+                {events.error
+                  ? "加载失败，请刷新重试"
+                  : events.loading
+                    ? "正在读取…"
+                    : "暂无人员操作记录"}
+              </Text>
+            )}
+          </Card>
+        </Grid.Col>
+      </Grid>
+      <Button
+        variant="subtle"
+        rightSection={<ArrowRight size={14} aria-hidden="true" />}
+        onClick={() => onNavigate("servers")}
+      >
         查看服务器列表
-        <ArrowRight size={14} />
       </Button>
     </>
   );

@@ -1,12 +1,22 @@
-import { Fragment, useState } from "react";
-import { Plus, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, Plus, Search } from "lucide-react";
+import {
+  Button,
+  Card,
+  Group,
+  Paper,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { api, json } from "../api";
 import type { AuditRecord, ServerEntry } from "../types";
 import { useResource } from "../lib/use-resource";
 import { errorText, formatCompactTime } from "../lib/utils";
-import { Button } from "../components/ui/button";
-import { Feedback, Status } from "../components/ui/feedback";
-import { Modal } from "../components/ui/dialog";
+import { Feedback, Status } from "../components/Feedback";
+import { PageHeading } from "../components/PageHeading";
+import { AppModal } from "../components/AppModal";
 import { ServerEditor } from "../components/ServerEditor";
 import {
   ServerDetails,
@@ -28,31 +38,48 @@ function ServerRow({
   );
   const latest = audit.data.records[0];
   return (
-    <button className="server-row" onClick={onOpen}>
-      <div>
-        <div className="server-row-title">
-          <strong>{server.alias}</strong>
-          <Status
-            value={check ? (check.ok ? "ok" : "error") : "unchecked"}
-            label={check ? (check.ok ? "检测通过" : "连接失败") : "尚未检测"}
-          />
-        </div>
-        <p>
+    <Paper
+      component="button"
+      className="server-row"
+      onClick={onOpen}
+      p="md"
+      w="100%"
+      style={{ border: "none", background: "transparent", textAlign: "left" }}
+    >
+      <Stack gap={4}>
+        <Group justify="space-between" wrap="nowrap" gap="sm">
+          <Group gap="sm" wrap="nowrap">
+            <Text fw={700}>{server.alias}</Text>
+            <Status
+              value={check ? (check.ok ? "ok" : "error") : "unchecked"}
+              label={check ? (check.ok ? "检测通过" : "连接失败") : "尚未检测"}
+            />
+          </Group>
+          <ChevronRight size={14} aria-hidden="true" />
+        </Group>
+        <Text size="sm" c="dimmed">
           {server.tags[0] || "未分组"} · {server.host}:{server.port}
-        </p>
-        <small>
+        </Text>
+        <Text size="xs" c="dimmed">
           {audit.loading
             ? "正在读取调用记录…"
             : audit.error
               ? "调用记录暂不可用"
               : `24h ${audit.data.total} 次 · 最近 ${latest ? formatCompactTime(latest.ts) : "暂无调用"}`}
-        </small>
-        {check && !check.ok && <p className="danger-text">{check.message}</p>}
-      </div>
-      <ChevronRight size={14} />
-    </button>
+        </Text>
+        {check && !check.ok && <Text size="sm" c="red">{check.message}</Text>}
+      </Stack>
+    </Paper>
   );
 }
+
+const connectionOptions = [
+  { value: "", label: "全部状态" },
+  { value: "ok", label: "检测通过" },
+  { value: "error", label: "连接失败" },
+  { value: "unchecked", label: "尚未检测" },
+];
+
 export default function Servers() {
   const { data, loading, error, reload } = useResource<{
     servers: ServerEntry[];
@@ -70,6 +97,10 @@ export default function Servers() {
   const [message, setMessage] = useState("");
   const [checks, setChecks] = useState<Record<string, ConnectionCheck>>({});
   const tags = [...new Set(data.servers.flatMap((server) => server.tags))];
+  const tagOptions = [
+    { value: "", label: "全部环境" },
+    ...tags.map((value) => ({ value, label: value })),
+  ];
   const hasFilters = !!(query || tag || connection);
   const filtered = data.servers.filter((server) => {
     const matchesQuery =
@@ -158,77 +189,79 @@ export default function Servers() {
         />
       ) : (
         <>
-          <div className="page-heading">
-            <div>
-              <h1>服务器管理</h1>
-              <p>管理网关连接的 Linux 目标服务器</p>
-            </div>
-            <Button variant="primary" onClick={() => setEditor(null)}>
-              <Plus size={14} />
-              新增
-            </Button>
-          </div>
-          <section className="panel server-filter-panel">
-            <input
-              className="input"
-              aria-label="搜索服务器"
-              placeholder="搜索服务器名称..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="server-filter-options">
-              <select
-                className="input"
+          <PageHeading
+            title="服务器管理"
+            description="管理网关连接的 Linux 目标服务器"
+            extra={
+              <Button
+                onClick={() => setEditor(null)}
+                leftSection={<Plus size={15} aria-hidden="true" />}
+              >
+                新增
+              </Button>
+            }
+          />
+          <Card withBorder p="sm" radius="md" mb="md">
+            <Group align="center" gap="sm" wrap="wrap">
+              <TextInput
+                flex={1}
+                miw={220}
+                aria-label="搜索服务器"
+                placeholder="搜索服务器名称..."
+                leftSection={<Search size={15} aria-hidden="true" />}
+                value={query}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+              <Select
                 aria-label="筛选服务器标签"
+                w={150}
+                data={tagOptions}
                 value={tag}
-                onChange={(event) => setTag(event.target.value)}
-              >
-                <option value="">全部环境</option>
-                {tags.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="input"
+                onChange={(value) => setTag(value ?? "")}
+              />
+              <Select
                 aria-label="筛选连接检测"
+                w={150}
+                data={connectionOptions}
                 value={connection}
-                onChange={(event) => setConnection(event.target.value)}
-              >
-                <option value="">全部状态</option>
-                <option value="ok">检测通过</option>
-                <option value="error">连接失败</option>
-                <option value="unchecked">尚未检测</option>
-              </select>
-            </div>
-            <div className="server-filter-summary">
-              <span>
-                共 {loading || error ? "—" : filtered.length} 台服务器
-              </span>
-              <Button variant="quiet" onClick={clearFilters}>
+                onChange={(value) => setConnection(value ?? "")}
+              />
+              <Button variant="subtle" color="gray" onClick={clearFilters}>
                 重置筛选
               </Button>
-            </div>
-          </section>
+            </Group>
+            <Text size="xs" c="dimmed" mt={8}>
+              共 {loading || error ? "—" : filtered.length} 台服务器
+            </Text>
+          </Card>
           <Feedback message={error} />
-          <section className="panel server-list" aria-busy={loading}>
-            {filtered.map((server) => (
-              <Fragment key={server.alias}>
-                <ServerRow
-                  server={server}
-                  check={checks[server.alias]}
-                  onOpen={() => {
-                    setDetails(server);
-                    setActionError("");
-                  }}
-                />
-                <div className="server-list-divider" aria-hidden="true" />
-              </Fragment>
-            ))}
+          <Paper withBorder radius="md" mb="md" aria-busy={loading}>
+            <Stack gap={0}>
+              {filtered.map((server, index) => (
+                <div key={server.alias}>
+                  <ServerRow
+                    server={server}
+                    check={checks[server.alias]}
+                    onOpen={() => {
+                      setDetails(server);
+                      setActionError("");
+                    }}
+                  />
+                  {index < filtered.length - 1 && (
+                    <div
+                      style={{
+                        borderTop:
+                          "1px solid var(--mantine-color-default-border)",
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+              ))}
+            </Stack>
             {!filtered.length && (
-              <div className="table-empty">
-                <strong>
+              <Stack align="center" py="xl" gap="xs">
+                <Text fw={600}>
                   {loading
                     ? "正在读取…"
                     : error
@@ -236,9 +269,10 @@ export default function Servers() {
                       : hasFilters
                         ? "没有匹配的服务器"
                         : "还没有服务器"}
-                </strong>
+                </Text>
                 {!loading && (
                   <Button
+                    variant="default"
                     onClick={
                       error
                         ? reload
@@ -250,12 +284,12 @@ export default function Servers() {
                     {error ? "重试" : hasFilters ? "清除筛选" : "添加服务器"}
                   </Button>
                 )}
-              </div>
+              </Stack>
             )}
-          </section>
-          <p className="page-note">
+          </Paper>
+          <Text size="xs" c="dimmed">
             连接状态为本页手动检测结果，不代表持续健康监测。
-          </p>
+          </Text>
         </>
       )}
       {editor !== undefined && (
@@ -277,32 +311,34 @@ export default function Servers() {
           }}
         />
       )}
-      <Modal
-        open={!!deleting}
-        onOpenChange={(open) => {
-          if (!open && !busy) setDeleting(null);
+      <AppModal
+        opened={!!deleting}
+        onClose={() => {
+          if (!busy) setDeleting(null);
         }}
         title="删除服务器配置"
         description="此操作移除网关配置，不会删除远端主机。"
+        footer={
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setDeleting(null)} disabled={!!busy}>
+              取消
+            </Button>
+            <Button
+              color="red"
+              onClick={() => void remove()}
+              disabled={!!busy}
+            >
+              {busy ? "正在删除…" : "删除配置"}
+            </Button>
+          </Group>
+        }
       >
-        <p>
-          确认删除 <strong>{deleting?.alias}</strong>？后续 MCP
+        <Text size="sm">
+          确认删除 <Text span fw={700}>{deleting?.alias}</Text>？后续 MCP
           调用将无法再使用此别名。
-        </p>
+        </Text>
         <Feedback message={actionError} />
-        <div className="dialog-actions right">
-          <Button onClick={() => setDeleting(null)} disabled={!!busy}>
-            取消
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => void remove()}
-            disabled={!!busy}
-          >
-            {busy ? "正在删除…" : "删除配置"}
-          </Button>
-        </div>
-      </Modal>
+      </AppModal>
     </>
   );
 }

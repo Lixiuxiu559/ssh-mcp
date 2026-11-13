@@ -1,20 +1,24 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light" data-palette="blue">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>SSH MCP · 链路工作台</title>
     <script>
+      // Mantine 色彩方案引导：仅亮色/暗色两态；旧 linkage-theme 偏好做一次性迁移。
       (() => {
-        let mode = "auto";
         try {
-          const saved = localStorage.getItem("linkage-theme");
-          if (saved === "light" || saved === "dark") mode = saved;
-        } catch { /* 偏好存储可选。 */ }
-        document.documentElement.dataset.theme = mode === "dark" ||
-          (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
-        document.documentElement.dataset.palette = "blue";
+          let stored = localStorage.getItem("mantine-color-scheme-value");
+          if (stored !== "light" && stored !== "dark") {
+            const legacy = localStorage.getItem("linkage-theme");
+            stored = legacy === "dark" ? "dark" : "light";
+            localStorage.setItem("mantine-color-scheme-value", stored);
+          }
+          document.documentElement.dataset.mantineColorScheme = stored;
+        } catch {
+          document.documentElement.dataset.mantineColorScheme = "light";
+        }
       })();
     </script>
   </head>

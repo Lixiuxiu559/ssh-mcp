@@ -1,14 +1,23 @@
 import { useMemo, useState, type FormEvent } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
 import {
+  ArrowUpRight,
   Download,
   RefreshCw,
   Search,
-  ChevronLeft,
-  ChevronRight,
-  ArrowUpRight,
   X,
 } from "lucide-react";
+import {
+  ActionIcon,
+  Button,
+  Card,
+  Group,
+  Pagination,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { response } from "../api";
 import type {
   AuditKind,
@@ -19,10 +28,11 @@ import type {
 } from "../types";
 import { useResource } from "../lib/use-resource";
 import { formatTime, errorText } from "../lib/utils";
-import { DataTable } from "../components/ui/data-table";
-import { Button } from "../components/ui/button";
-import { Feedback, Status } from "../components/ui/feedback";
-import { Modal } from "../components/ui/dialog";
+import { DataTable, type TableColumn } from "../components/DataTable";
+import { Feedback, Status } from "../components/Feedback";
+import { PageHeading } from "../components/PageHeading";
+import { AppModal } from "../components/AppModal";
+
 interface Filters {
   q: string;
   days: string;
@@ -58,6 +68,23 @@ function filterParams(filters: Filters) {
     );
   return params;
 }
+
+const daysOptions = [
+  { value: "1", label: "最近 24 小时" },
+  { value: "7", label: "最近 7 天" },
+  { value: "30", label: "最近 30 天" },
+  { value: "all", label: "全部留存记录" },
+];
+const statusOptions = [
+  { value: "", label: "全部结果" },
+  { value: "ok", label: "成功" },
+  { value: "error", label: "失败" },
+  { value: "denied", label: "已拒绝" },
+  { value: "timeout", label: "超时" },
+  { value: "cancelled", label: "已取消" },
+  { value: "pending", label: "未完成" },
+];
+
 export default function Audit({ kind }: { kind: AuditKind }) {
   const person = kind === "person";
   const [draft, setDraft] = useState(initialFilters);
@@ -116,108 +143,103 @@ export default function Audit({ kind }: { kind: AuditKind }) {
       setExporting(false);
     }
   }
-  const columns = useMemo<ColumnDef<AuditRecord, unknown>[]>(
-    () => [
-      {
-        accessorKey: "ts",
-        header: "时间",
-        cell: ({ getValue }) => (
-          <span className="mono small nowrap">
-            {formatTime(getValue() as string)}
-          </span>
-        ),
-      },
-      {
-        id: "identity",
-        header: person ? "操作人员" : "调用凭证",
-        cell: ({ row }) => (
-          <div className="identity-cell">
-            <strong>
-              {person
-                ? row.original.username || row.original.user || "未认证来源"
-                : row.original.token_name || row.original.user || "历史调用"}
-            </strong>
-            <small className="mono">
-              {person
-                ? row.original.actor_user_id || row.original.source_ip || "—"
-                : row.original.token_prefix ||
-                  row.original.token_id ||
-                  "legacy"}
-            </small>
-          </div>
-        ),
-      },
-      {
-        id: "action",
-        header: person ? "动作 / 对象" : "工具 / 目标",
-        cell: ({ row }) => (
-          <div className="identity-cell">
-            <strong className="mono">
-              {text(person ? row.original.action : row.original.tool)}
-            </strong>
-            <small>
-              {person
-                ? `${row.original.object_type || ""} ${row.original.object_id || ""}`
-                : row.original.server || "网关"}
-            </small>
-          </div>
-        ),
-      },
-      {
-        id: "summary",
-        header: "操作摘要",
-        cell: ({ row }) => (
-          <span
-            className="audit-summary mono"
-            title={text(
-              person
-                ? row.original.summary
-                : row.original.command || row.original.path,
-            )}
-          >
-            {text(
-              person
-                ? row.original.summary
-                : row.original.command ||
-                    row.original.path ||
-                    row.original.target_host,
-            )}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: "结果",
-        cell: ({ getValue }) => (
-          <Status value={String(getValue() || "pending")} />
-        ),
-      },
-      {
-        accessorKey: "duration_ms",
-        header: "耗时",
-        cell: ({ getValue }) => (
-          <span className="mono small nowrap">
-            {typeof getValue() === "number" ? `${getValue()} ms` : "—"}
-          </span>
-        ),
-      },
-      {
-        id: "details",
-        header: "详情",
-        cell: ({ row }) => (
-          <Button
-            variant="quiet"
-            className="icon-button"
-            aria-label={`查看 ${formatTime(row.original.ts)} 审计详情`}
-            onClick={() => setDetails(row.original)}
-          >
-            <ArrowUpRight size={16} />
-          </Button>
-        ),
-      },
-    ],
-    [person],
-  );
+  const columns: TableColumn<AuditRecord>[] = [
+    {
+      id: "ts",
+      header: "时间",
+      value: (row) => row.ts,
+      render: (row) => (
+        <span className="mono nowrap">{formatTime(row.ts)}</span>
+      ),
+    },
+    {
+      id: "identity",
+      header: person ? "操作人员" : "调用凭证",
+      render: (row) => (
+        <Stack gap={0}>
+          <Text size="sm" fw={600}>
+            {person
+              ? row.username || row.user || "未认证来源"
+              : row.token_name || row.user || "历史调用"}
+          </Text>
+          <Text size="xs" c="dimmed" className="mono">
+            {person
+              ? row.actor_user_id || row.source_ip || "—"
+              : row.token_prefix || row.token_id || "legacy"}
+          </Text>
+        </Stack>
+      ),
+    },
+    {
+      id: "action",
+      header: person ? "动作 / 对象" : "工具 / 目标",
+      render: (row) => (
+        <Stack gap={0}>
+          <Text size="sm" fw={600} className="mono">
+            {text(person ? row.action : row.tool)}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {person
+              ? `${row.object_type || ""} ${row.object_id || ""}`
+              : row.server || "网关"}
+          </Text>
+        </Stack>
+      ),
+    },
+    {
+      id: "summary",
+      header: "操作摘要",
+      render: (row) => (
+        <Text
+          size="sm"
+          className="mono wrap-anywhere"
+          title={text(
+            person
+              ? row.summary
+              : row.command || row.path,
+          )}
+        >
+          {text(
+            person
+              ? row.summary
+              : row.command || row.path || row.target_host,
+          )}
+        </Text>
+      ),
+    },
+    {
+      id: "status",
+      header: "结果",
+      sortable: true,
+      value: (row) => row.status ?? "",
+      render: (row) => <Status value={String(row.status || "pending")} />,
+    },
+    {
+      id: "duration_ms",
+      header: "耗时",
+      sortable: true,
+      value: (row) => row.duration_ms ?? -1,
+      render: (row) => (
+        <span className="mono nowrap">
+          {typeof row.duration_ms === "number" ? `${row.duration_ms} ms` : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "details",
+      header: "详情",
+      render: (row) => (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          aria-label={`查看 ${formatTime(row.ts)} 审计详情`}
+          onClick={() => setDetails(row)}
+        >
+          <ArrowUpRight size={16} aria-hidden="true" />
+        </ActionIcon>
+      ),
+    },
+  ];
   const pages = Math.max(1, Math.ceil(data.total / pageSize));
   const hasFilters = Boolean(
     filters.q ||
@@ -234,192 +256,167 @@ export default function Audit({ kind }: { kind: AuditKind }) {
   }
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">
-            {person ? "PEOPLE ACTIVITY" : "MCP ACTIVITY"}
-          </span>
-          <h1>{person ? "人员操作审计" : "MCP 调用审计"}</h1>
-          <p>
-            {person
-              ? "追溯登录、账号、凭证和资源配置的变更。"
-              : "查看哪个 token 在什么目标上执行了什么操作，以及调用结果。"}
-          </p>
-        </div>
-        <Button onClick={() => void exportCsv()} disabled={exporting}>
-          <Download size={16} />
-          {exporting ? "正在导出…" : "导出 CSV"}
-        </Button>
-      </div>
-      <Feedback
-        message={exportError}
-        onDismiss={() => setExportError("")}
+      <PageHeading
+        eyebrow={person ? "PEOPLE ACTIVITY" : "MCP ACTIVITY"}
+        title={person ? "人员操作审计" : "MCP 调用审计"}
+        description={
+          person
+            ? "追溯登录、账号、凭证和资源配置的变更。"
+            : "查看哪个 token 在什么目标上执行了什么操作，以及调用结果。"
+        }
+        extra={
+          <Button
+            variant="default"
+            onClick={() => void exportCsv()}
+            disabled={exporting}
+            leftSection={<Download size={15} aria-hidden="true" />}
+          >
+            {exporting ? "正在导出…" : "导出 CSV"}
+          </Button>
+        }
       />
-      <section className="panel">
+      <Feedback message={exportError} onDismiss={() => setExportError("")} />
+      <Card withBorder p="md" radius="md">
         <form className="audit-filter" onSubmit={search}>
-          <div className="search-input">
-            <Search size={16} />
-            <input
+          <Group align="center" gap="sm" wrap="wrap" mb="sm">
+            <TextInput
+              flex={1}
+              miw={200}
               aria-label="搜索审计记录"
               value={draft.q}
               placeholder={person ? "动作、对象或人员…" : "命令、路径或工具…"}
-              onChange={(e) => change("q", e.target.value)}
+              leftSection={<Search size={15} aria-hidden="true" />}
+              onChange={(event) => change("q", event.currentTarget.value)}
             />
-          </div>
-          <select
-            className="input filter-select"
-            aria-label="审计时间范围"
-            value={draft.days}
-            onChange={(e) => change("days", e.target.value)}
-          >
-            <option value="1">最近 24 小时</option>
-            <option value="7">最近 7 天</option>
-            <option value="30">最近 30 天</option>
-            <option value="all">全部留存记录</option>
-          </select>
-          <select
-            className="input filter-select"
-            aria-label="操作结果"
-            value={draft.status}
-            onChange={(e) => change("status", e.target.value)}
-          >
-            <option value="">全部结果</option>
-            <option value="ok">成功</option>
-            <option value="error">失败</option>
-            <option value="denied">已拒绝</option>
-            <option value="timeout">超时</option>
-            <option value="cancelled">已取消</option>
-            <option value="pending">未完成</option>
-          </select>
-          {person ? (
-            <select
-              className="input filter-select"
-              aria-label="操作人员"
-              value={draft.user_id}
-              onChange={(e) => change("user_id", e.target.value)}
-            >
-              <option value="">全部人员</option>
-              {users.users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.display_name || user.username}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <>
-              <select
-                className="input filter-select"
-                aria-label="目标服务器"
-                value={draft.server}
-                onChange={(e) => change("server", e.target.value)}
-              >
-                <option value="">全部服务器</option>
-                {servers.servers.map((server) => (
-                  <option key={server.alias} value={server.alias}>
-                    {server.alias}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="input filter-select"
-                aria-label="调用 token"
-                value={draft.token_id}
-                onChange={(e) => change("token_id", e.target.value)}
-              >
-                <option value="">全部 token</option>
-                {tokens.tokens.map((token) => (
-                  <option key={token.id} value={token.id}>
-                    {token.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          <div className="button-row">
-            <Button type="submit" variant="primary" disabled={loading}>
+            <Select
+              aria-label="审计时间范围"
+              w={150}
+              data={daysOptions}
+              value={draft.days}
+              onChange={(value) => change("days", value ?? "7")}
+            />
+            <Select
+              aria-label="操作结果"
+              w={130}
+              data={statusOptions}
+              value={draft.status}
+              onChange={(value) => change("status", value ?? "")}
+            />
+            {person ? (
+              <Select
+                aria-label="操作人员"
+                w={150}
+                data={[
+                  { value: "", label: "全部人员" },
+                  ...users.users.map((user) => ({
+                    value: user.id,
+                    label: user.display_name || user.username,
+                  })),
+                ]}
+                value={draft.user_id}
+                onChange={(value) => change("user_id", value ?? "")}
+              />
+            ) : (
+              <>
+                <Select
+                  aria-label="目标服务器"
+                  w={150}
+                  data={[
+                    { value: "", label: "全部服务器" },
+                    ...servers.servers.map((server) => ({
+                      value: server.alias,
+                      label: server.alias,
+                    })),
+                  ]}
+                  value={draft.server}
+                  onChange={(value) => change("server", value ?? "")}
+                />
+                <Select
+                  aria-label="调用 token"
+                  w={150}
+                  data={[
+                    { value: "", label: "全部 token" },
+                    ...tokens.tokens.map((token) => ({
+                      value: token.id,
+                      label: token.name,
+                    })),
+                  ]}
+                  value={draft.token_id}
+                  onChange={(value) => change("token_id", value ?? "")}
+                />
+              </>
+            )}
+            <Button type="submit" disabled={loading}>
               筛选
             </Button>
-            <Button
+            <ActionIcon
+              variant="default"
+              size="input-sm"
               type="button"
-              variant="quiet"
               onClick={clearFilters}
               aria-label="清除审计筛选"
             >
-              <X size={15} />
-            </Button>
-            <Button
+              <X size={15} aria-hidden="true" />
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              size="input-sm"
               type="button"
-              variant="quiet"
               onClick={reload}
               disabled={loading}
               aria-label="刷新审计"
             >
-              <RefreshCw size={15} />
-            </Button>
-          </div>
+              <RefreshCw size={15} aria-hidden="true" />
+            </ActionIcon>
+          </Group>
         </form>
         <DataTable
           sortable={false}
-          stickyFirst={false}
+          stickyHeader
           data={data.records}
           columns={columns}
+          rowKey={(row, index) => row.id ?? index}
           loading={loading}
           error={error}
           onRetry={reload}
           empty="当前条件下没有审计记录"
           emptyAction={
             hasFilters ? (
-              <Button variant="secondary" onClick={clearFilters}>
+              <Button variant="default" size="xs" onClick={clearFilters}>
                 清除筛选
               </Button>
             ) : undefined
           }
         />
-        <div className="table-pagination">
-          <span className="muted small">
+        <Group justify="space-between" mt="sm" wrap="nowrap">
+          <Text size="xs" c="dimmed">
             共 {data.total} 条记录 · 默认保留 30 天
-          </span>
-          <div className="button-row">
-            <Button
-              variant="quiet"
-              className="icon-button"
-              aria-label="上一页"
-              disabled={page === 0 || loading}
-              onClick={() => setPage(page - 1)}
-            >
-              <ChevronLeft size={17} />
-            </Button>
-            <span className="mono small">
-              {page + 1} / {pages}
-            </span>
-            <Button
-              variant="quiet"
-              className="icon-button"
-              aria-label="下一页"
-              disabled={page + 1 >= pages || loading}
-              onClick={() => setPage(page + 1)}
-            >
-              <ChevronRight size={17} />
-            </Button>
-          </div>
-        </div>
-      </section>
-      <p className="page-note">
+          </Text>
+          <Pagination
+            total={pages}
+            value={page + 1}
+            onChange={(value) => setPage(value - 1)}
+            siblings={1}
+            boundaries={1}
+            size="sm"
+            disabled={loading}
+          />
+        </Group>
+      </Card>
+      <Text size="xs" c="dimmed" mt="md">
         {person
           ? "秘密字段仅记录更换动作，不展示密码、私钥或 token 明文。"
           : "Token 标识代表调用凭证，不等同于实际使用者身份。旧版记录保留原始身份，不推测 token 归属。"}
-      </p>
-      <Modal
-        open={!!details}
-        onOpenChange={(open) => {
-          if (!open) setDetails(null);
-        }}
+      </Text>
+      <AppModal
+        opened={!!details}
+        onClose={() => setDetails(null)}
         title={person ? "人员操作详情" : "MCP 调用详情"}
         description="操作发生时保存的身份与目标快照。"
-        wide
+        size="lg"
       >
         {details && (
-          <>
+          <Stack gap="md">
             <dl className="detail-grid">
               <dt>时间</dt>
               <dd className="mono">{formatTime(details.ts)}</dd>
@@ -434,15 +431,13 @@ export default function Audit({ kind }: { kind: AuditKind }) {
                   : details.token_name || details.user || "历史调用"}
               </dd>
               <dt>{person ? "人员 ID" : "Token ID"}</dt>
-              <dd className="mono wrap">
-                {text(person ? details.actor_user_id : details.token_id)}
-              </dd>
+              <dd className="mono">{text(person ? details.actor_user_id : details.token_id)}</dd>
               <dt>{person ? "动作" : "工具"}</dt>
               <dd className="mono">
                 {text(person ? details.action : details.tool)}
               </dd>
               <dt>{person ? "对象" : "服务器别名"}</dt>
-              <dd className="mono wrap">
+              <dd className="mono">
                 {person
                   ? `${details.object_type || ""} ${details.object_id || ""}`
                   : text(details.server)}
@@ -450,7 +445,7 @@ export default function Audit({ kind }: { kind: AuditKind }) {
               {!person && (
                 <>
                   <dt>执行目标快照</dt>
-                  <dd className="mono wrap">
+                  <dd className="mono">
                     {details.target_host
                       ? `${details.target_username || ""}@${details.target_host}:${details.target_port || 22}`
                       : "旧记录未保存目标快照"}
@@ -466,13 +461,15 @@ export default function Audit({ kind }: { kind: AuditKind }) {
                 </>
               )}
               <dt>请求编号</dt>
-              <dd className="mono wrap">{text(details.request_id)}</dd>
+              <dd className="mono">{text(details.request_id)}</dd>
               <dt>来源 IP</dt>
               <dd className="mono">{text(details.source_ip)}</dd>
             </dl>
-            <div className="detail-block">
-              <h3>{person ? "变更摘要" : "命令 / 文件路径"}</h3>
-              <pre>
+            <div>
+              <Title order={4} mb={6}>
+                {person ? "变更摘要" : "命令 / 文件路径"}
+              </Title>
+              <pre className="detail-pre">
                 {text(
                   person ? details.summary : details.command || details.path,
                 )}
@@ -480,18 +477,20 @@ export default function Audit({ kind }: { kind: AuditKind }) {
             </div>
             {details.error && <Feedback message={details.error} />}
             {details.content_sha256 && (
-              <div className="detail-block">
-                <h3>传输内容摘要</h3>
-                <p className="small mono wrap">
+              <div>
+                <Title order={4} mb={6}>
+                  传输内容摘要
+                </Title>
+                <Text size="xs" className="mono wrap-anywhere">
                   {details.content_bytes} bytes
                   <br />
                   SHA-256: {details.content_sha256}
-                </p>
+                </Text>
               </div>
             )}
-          </>
+          </Stack>
         )}
-      </Modal>
+      </AppModal>
     </>
   );
 }
