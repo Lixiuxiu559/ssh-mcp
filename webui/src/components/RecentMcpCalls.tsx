@@ -1,5 +1,5 @@
 import { Activity, ArrowRight, RefreshCw } from "lucide-react";
-import { Button, Card, Space, Tag } from "antd";
+import { Button, Card, Space, Typography } from "antd";
 import type { TableColumnsType } from "antd";
 import { AppTable } from "./AppTable";
 import { Feedback, Status } from "./Feedback";
@@ -17,7 +17,6 @@ export interface RecentMcpCallsProps {
   records: readonly RecentMcpCall[];
   total: number;
   targetLabel: string;
-  healthy: boolean;
   loading: boolean;
   error?: string;
   refreshing?: boolean;
@@ -34,7 +33,6 @@ export function RecentMcpCalls({
   records,
   total,
   targetLabel,
-  healthy,
   loading,
   error,
   refreshing = loading,
@@ -56,14 +54,22 @@ export function RecentMcpCalls({
   return (
     <Card
       className="overview-panel overview-recent-calls"
-      title="最近 MCP 调用"
+      title={
+        <Space size={12}>
+          <span>最近 MCP 调用</span>
+          <Typography.Text
+            type="secondary"
+            style={{ fontSize: "var(--ant-font-size-sm)", fontWeight: 400 }}
+          >
+            最近 24h
+          </Typography.Text>
+        </Space>
+      }
       extra={
-        <Space>
-          <Tag>最近 24h</Tag>
-          <Tag color={healthy ? "success" : "default"}>
-            {healthy ? "网关正常" : "状态未知"}
-          </Tag>
+        <Space size={12}>
           <Button
+            type="text"
+            size="small"
             onClick={onRefresh}
             loading={refreshing}
             disabled={refreshing}

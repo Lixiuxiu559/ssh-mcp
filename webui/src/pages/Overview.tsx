@@ -22,11 +22,9 @@ const startOfWindow = () => new Date(Date.now() - 86400000).toISOString();
 
 export default function Overview({
   onNavigate,
-  healthy,
   onRefreshHealth,
 }: {
   onNavigate: (page: Page) => void;
-  healthy: boolean;
   onRefreshHealth: () => void;
 }) {
   const [since, setSince] = useState(startOfWindow);
@@ -132,7 +130,6 @@ export default function Overview({
             records={callItems}
             total={calls.data.total}
             targetLabel="目标服务器"
-            healthy={healthy}
             loading={calls.loading}
             error={calls.error}
             refreshing={loading}

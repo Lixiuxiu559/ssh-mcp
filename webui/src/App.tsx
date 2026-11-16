@@ -115,7 +115,6 @@ export default function App() {
       {page === "overview" ? (
         <Overview
           onNavigate={navigate}
-          healthy={healthy}
           onRefreshHealth={health.reload}
         />
       ) : page === "servers" ? (
