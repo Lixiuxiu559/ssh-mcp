@@ -82,34 +82,34 @@ svg {
 .repository-link.ant-btn {
   color: var(--ant-color-text-secondary);
 }
-.sidebar-footer .repository-link {
-  width: 100%;
+.gateway-status.ant-btn {
+  height: 40px;
+  padding-inline: 16px;
+  gap: 8px;
   justify-content: flex-start;
+  color: var(--ant-color-text-secondary);
+  background: var(--ant-color-fill-alter);
+  border-radius: var(--ant-border-radius);
+  font-size: 13px;
 }
-.sidebar-footer-collapsed .repository-link {
+.gateway-status-label {
+  white-space: nowrap;
+}
+.gateway-status-refresh {
+  margin-inline-start: auto;
+  color: var(--ant-color-text-tertiary);
+}
+.gateway-status-collapsed.ant-btn {
+  padding-inline: 0;
   justify-content: center;
 }
-.gateway-status {
-  padding: 0 8px;
-  font-size: 12px;
-}
-.sidebar-footer-collapsed .gateway-status {
-  padding: 0;
-  text-align: center;
-}
 .app-content {
-  padding: 28px 32px;
+  padding: 16px 20px;
   min-width: 0;
   overflow: auto;
 }
 .startup {
   min-height: 100vh;
-}
-.page-heading {
-  margin-bottom: 24px;
-}
-.page-heading h1.ant-typography {
-  margin: 0;
 }
 .setup-panel > .ant-card-body {
   padding: 24px;
@@ -196,6 +196,7 @@ svg {
 .overview-panel {
   display: flex;
   flex-direction: column;
+  min-height: 320px;
 }
 .overview-panel > .ant-card-body {
   display: flex;
@@ -218,8 +219,15 @@ svg {
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.ant-table-thead > tr > th {
+.app-content .ant-table-thead > tr > th {
+  text-align: center;
   white-space: nowrap;
+}
+.app-content .ant-table-thead .ant-table-column-sorters {
+  justify-content: center;
+}
+.app-content .ant-table-thead .ant-table-column-title {
+  flex: none;
 }
 .ant-table-cell {
   overflow-wrap: anywhere;

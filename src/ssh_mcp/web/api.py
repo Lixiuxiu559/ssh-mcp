@@ -342,6 +342,16 @@ def register_web_routes(mcp: FastMCP, state: GatewayState) -> None:
         request.state.outbox_recorded = True
         return JSONResponse(item)
 
+    @route("/api/users/{id}", ["DELETE"], action="user.delete", object_type="user")
+    async def delete_user(request):
+        await asyncio.to_thread(
+            state.identity.delete_user,
+            request.path_params["id"],
+            request.state.identity_event,
+        )
+        request.state.outbox_recorded = True
+        return JSONResponse({"ok": True})
+
     @route("/api/tokens", ["GET"])
     async def list_tokens(request):
         tokens = await asyncio.to_thread(state.identity.list_tokens, include_deleted=False)

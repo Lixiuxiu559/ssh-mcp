@@ -3,10 +3,10 @@ import type { ThemeConfig } from "antd";
 
 export const fontFamily = '"OPPO Sans", -apple-system, "Segoe UI", sans-serif';
 
-export function appTheme(dark: boolean): ThemeConfig {
+export function appTheme(dark: boolean, cssVarKey = "mcp-console"): ThemeConfig {
   return {
     algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
-    cssVar: { key: "ssh-console" },
+    cssVar: { key: cssVarKey },
     token: { fontFamily, borderRadius: 8, fontSize: 14, controlHeight: 34 },
     components: {
       Layout: {

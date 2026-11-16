@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { App, Avatar, Button, Dropdown, Flex, Typography } from "antd";
 import { KeyRound, LogOut, UserRound } from "lucide-react";
-import type { User } from "../types";
+import type { User } from "../console-types";
 import { AccountEditor, type AccountEditorMode } from "./AccountEditor";
 
 export function AccountMenu({

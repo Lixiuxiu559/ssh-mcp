@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Alert, Button, Form, Input, Space } from "antd";
 import { api, json } from "../api";
-import type { User } from "../types";
+import type { User } from "../console-types";
 import { errorText } from "../lib/utils";
 import { AppModal } from "./AppModal";
 import { Feedback } from "./Feedback";

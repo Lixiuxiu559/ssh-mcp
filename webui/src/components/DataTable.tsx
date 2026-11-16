@@ -1,6 +1,8 @@
 import type { Key, ReactNode } from "react";
-import { Button, Flex, Table } from "antd";
+import { Button, Flex } from "antd";
+import type { TablePaginationConfig } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { AppTable } from "./AppTable";
 import { Feedback } from "./Feedback";
 import { ListNotice } from "./ListStates";
 
@@ -29,6 +31,7 @@ export function DataTable<T extends object>({
   stickyHeader = false,
   fixedLayout = false,
   minWidth = 200,
+  pagination,
 }: {
   columns: TableColumn<T>[];
   data: T[];
@@ -43,6 +46,7 @@ export function DataTable<T extends object>({
   stickyHeader?: boolean;
   fixedLayout?: boolean;
   minWidth?: number;
+  pagination?: TablePaginationConfig | false;
 }) {
   const definitions: ColumnsType<T> = columns.map((column) => ({
     key: column.id,
@@ -87,7 +91,7 @@ export function DataTable<T extends object>({
           action={emptyAction}
         />
       ) : (
-        <Table<T>
+        <AppTable<T>
           size="middle"
           dataSource={data}
           columns={definitions}
@@ -95,7 +99,7 @@ export function DataTable<T extends object>({
             rowKey ? rowKey(row, index ?? 0) : String(index)
           }
           loading={loading}
-          pagination={false}
+          pagination={pagination}
           sticky={stickyHeader}
           tableLayout={fixedLayout ? "fixed" : "auto"}
           scroll={{ x: minWidth }}

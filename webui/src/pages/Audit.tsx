@@ -1,13 +1,10 @@
 import { useMemo, useState } from "react";
-import { ArrowUpRight, Download, RefreshCw, Search, X } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import {
   Button,
   Card,
   Descriptions,
   Flex,
-  Form,
-  Input,
-  Pagination,
   Select,
   Typography,
 } from "antd";
@@ -21,6 +18,7 @@ import type {
 } from "../types";
 import { useResource } from "../lib/use-resource";
 import { formatTime, errorText } from "../lib/utils";
+import { useListPagination } from "../lib/pagination";
 import {
   personActionLabel,
   personObjectLabel,
@@ -31,6 +29,7 @@ import { Feedback, Status } from "../components/Feedback";
 import { ListNotice } from "../components/ListStates";
 import { PageHeading } from "../components/PageHeading";
 import { AppModal } from "../components/AppModal";
+import { AuditToolbar } from "../components/AuditToolbar";
 
 const { Text, Title } = Typography;
 
@@ -50,7 +49,6 @@ const initialFilters: Filters = {
   token_id: "",
   user_id: "",
 };
-const pageSize = 20;
 function hasActiveFilters(filters: Filters) {
   return Boolean(
     filters.q ||
@@ -81,27 +79,12 @@ function filterParams(filters: Filters) {
   return params;
 }
 
-const daysOptions = [
-  { value: "1", label: "最近 24 小时" },
-  { value: "7", label: "最近 7 天" },
-  { value: "30", label: "最近 30 天" },
-  { value: "all", label: "全部留存记录" },
-];
-const statusOptions = [
-  { value: "", label: "全部结果" },
-  { value: "ok", label: "成功" },
-  { value: "error", label: "失败" },
-  { value: "denied", label: "已拒绝" },
-  { value: "timeout", label: "超时" },
-  { value: "cancelled", label: "已取消" },
-  { value: "pending", label: "未完成" },
-];
-
 export default function Audit({ kind }: { kind: AuditKind }) {
   const person = kind === "person";
   const [draft, setDraft] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
-  const [page, setPage] = useState(0);
+  const { pagination, resetPage } = useListPagination();
+  const { current, pageSize } = pagination;
   const [details, setDetails] = useState<AuditRecord | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -109,9 +92,9 @@ export default function Audit({ kind }: { kind: AuditKind }) {
     const value = filterParams(filters);
     value.set("kind", kind);
     value.set("limit", String(pageSize));
-    value.set("offset", String(page * pageSize));
+    value.set("offset", String((current - 1) * pageSize));
     return value.toString();
-  }, [filters, page, kind]);
+  }, [filters, current, pageSize, kind]);
   const { data, loading, error, reload } = useResource<{
     records: AuditRecord[];
     total: number;
@@ -131,7 +114,7 @@ export default function Audit({ kind }: { kind: AuditKind }) {
     setDraft((old) => ({ ...old, [key]: value }));
   }
   function search() {
-    setPage(0);
+    resetPage();
     setFilters({ ...draft });
   }
   async function exportCsv() {
@@ -167,7 +150,7 @@ export default function Audit({ kind }: { kind: AuditKind }) {
       header: person ? "操作人员" : "调用凭证",
       width: "16%",
       render: (row) => (
-        <Flex vertical gap={0} style={{ minWidth: 0 }}>
+        <Flex vertical gap={0} align="center" style={{ minWidth: 0 }}>
           <Text ellipsis strong>
             {person
               ? row.username || row.user || "未认证来源"
@@ -186,7 +169,7 @@ export default function Audit({ kind }: { kind: AuditKind }) {
       header: person ? "操作 / 对象" : "工具 / 目标",
       width: "18%",
       render: (row) => (
-        <Flex vertical gap={0} style={{ minWidth: 0 }}>
+        <Flex vertical gap={0} align="center" style={{ minWidth: 0 }}>
           <Text ellipsis strong className={person ? undefined : "mono"}>
             {person ? personActionLabel(row.action) : text(row.tool)}
           </Text>
@@ -256,109 +239,70 @@ export default function Audit({ kind }: { kind: AuditKind }) {
   function clearFilters() {
     setDraft(initialFilters);
     setFilters({ ...initialFilters });
-    setPage(0);
+    resetPage();
   }
   return (
     <>
-      <PageHeading
-        title={person ? "人员操作审计" : "MCP 调用审计"}
-        extra={
-          <Button
-            onClick={() => void exportCsv()}
-            loading={exporting}
-            icon={<Download size={15} aria-hidden="true" />}
-          >
-            {exporting ? "正在导出…" : "导出 CSV"}
-          </Button>
-        }
-      />
+      <PageHeading title={person ? "人员操作审计" : "MCP 调用审计"} />
       <Feedback message={exportError} onDismiss={() => setExportError("")} />
       <Card>
-        <Form className="audit-filter" onFinish={search}>
-          <Flex align="center" gap={12} wrap style={{ marginBottom: 16 }}>
-            <Input
-              style={{ flex: 1, minWidth: 144 }}
-              allowClear
-              aria-label="搜索审计记录"
-              value={draft.q}
-              placeholder={person ? "动作、对象或人员…" : "命令、路径或工具…"}
-              prefix={<Search size={15} aria-hidden="true" />}
-              onChange={(event) => change("q", event.target.value)}
-            />
+        <AuditToolbar
+          draft={draft}
+          onChange={change}
+          searchPlaceholder={person ? "动作、对象或人员…" : "命令、路径或工具…"}
+          statusValues={["", "ok", "error", "denied", "timeout", "cancelled", "pending"]}
+          loading={loading}
+          exporting={exporting}
+          showClear={(hasActiveFilters(draft) || hasFilters) && !(empty && hasFilters)}
+          onSearch={search}
+          onClear={clearFilters}
+          onRefresh={reload}
+          onExport={exportCsv}
+          resourceFilter={!person && (
             <Select
-              aria-label="审计时间范围"
+              aria-label="目标服务器"
               style={{ width: 150 }}
-              options={daysOptions}
-              value={draft.days}
-              onChange={(value) => change("days", value ?? "7")}
+              options={[
+                { value: "", label: "全部服务器" },
+                ...servers.servers.map((server) => ({
+                  value: server.alias,
+                  label: server.alias,
+                })),
+              ]}
+              value={draft.server}
+              onChange={(value) => change("server", value ?? "")}
             />
+          )}
+          identityFilter={person ? (
             <Select
-              aria-label="操作结果"
-              style={{ width: 130 }}
-              options={statusOptions}
-              value={draft.status}
-              onChange={(value) => change("status", value ?? "")}
+              aria-label="操作人员"
+              style={{ width: 150 }}
+              options={[
+                { value: "", label: "全部人员" },
+                ...users.users.map((user) => ({
+                  value: user.id,
+                  label: user.display_name || user.username,
+                })),
+              ]}
+              value={draft.user_id}
+              onChange={(value) => change("user_id", value ?? "")}
             />
-            {person ? (
-              <Select
-                aria-label="操作人员"
-                style={{ width: 150 }}
-                options={[
-                  { value: "", label: "全部人员" },
-                  ...users.users.map((user) => ({
-                    value: user.id,
-                    label: user.display_name || user.username,
-                  })),
-                ]}
-                value={draft.user_id}
-                onChange={(value) => change("user_id", value ?? "")}
-              />
-            ) : (
-              <>
-                <Select
-                  aria-label="目标服务器"
-                  style={{ width: 150 }}
-                  options={[
-                    { value: "", label: "全部服务器" },
-                    ...servers.servers.map((server) => ({
-                      value: server.alias,
-                      label: server.alias,
-                    })),
-                  ]}
-                  value={draft.server}
-                  onChange={(value) => change("server", value ?? "")}
-                />
-                <Select
-                  aria-label="调用 token"
-                  style={{ width: 150 }}
-                  options={[
-                    { value: "", label: "全部 token" },
-                    ...tokens.tokens.map((token) => ({
-                      value: token.id,
-                      label: token.name,
-                    })),
-                  ]}
-                  value={draft.token_id}
-                  onChange={(value) => change("token_id", value ?? "")}
-                />
-              </>
-            )}
-            <Flex gap={8}>
-              <Button type="primary" htmlType="submit" loading={loading}>
-                筛选
-              </Button>
-              {(hasActiveFilters(draft) || hasFilters) &&
-                !(empty && hasFilters) && (
-                  <Button onClick={clearFilters} aria-label="清除审计筛选">
-                    <X size={15} aria-hidden="true" />
-                  </Button>
-                )}
-              <Button onClick={reload} disabled={loading} aria-label="刷新审计">
-                <RefreshCw size={15} aria-hidden="true" />
-              </Button>
-            </Flex>
-          </Flex>
-        </Form>
+          ) : (
+            <Select
+              aria-label="调用 token"
+              style={{ width: 150 }}
+              options={[
+                { value: "", label: "全部 token" },
+                ...tokens.tokens.map((token) => ({
+                  value: token.id,
+                  label: token.name,
+                })),
+              ]}
+              value={draft.token_id}
+              onChange={(value) => change("token_id", value ?? "")}
+            />
+          )}
+        />
         {empty ? (
           <ListNotice
             title={
@@ -380,7 +324,7 @@ export default function Audit({ kind }: { kind: AuditKind }) {
                     const all = { ...initialFilters, days: "all" };
                     setDraft(all);
                     setFilters(all);
-                    setPage(0);
+                    resetPage();
                   }}
                 >
                   查看全部留存记录
@@ -391,7 +335,11 @@ export default function Audit({ kind }: { kind: AuditKind }) {
         ) : (
           <DataTable
             sortable={false}
-            stickyHeader
+            pagination={{
+              ...pagination,
+              total: data.total,
+              disabled: loading,
+            }}
             fixedLayout
             minWidth={person ? 760 : 840}
             data={data.records}
@@ -405,24 +353,6 @@ export default function Audit({ kind }: { kind: AuditKind }) {
             error={error}
             onRetry={reload}
           />
-        )}
-        {data.total > 0 && (
-          <Flex
-            justify="space-between"
-            align="center"
-            style={{ marginTop: 16 }}
-          >
-            <Text type="secondary">共 {data.total} 条记录</Text>
-            <Pagination
-              total={data.total}
-              pageSize={pageSize}
-              current={page + 1}
-              onChange={(value) => setPage(value - 1)}
-              showSizeChanger={false}
-              size="small"
-              disabled={loading}
-            />
-          </Flex>
         )}
       </Card>
       <AppModal

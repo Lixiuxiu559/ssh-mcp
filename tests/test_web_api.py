@@ -95,6 +95,52 @@ async def test_all_users_same_capabilities_and_session_revocation(logged):
     assert (await logged.get("/api/me")).status_code == 401
 
 
+async def test_delete_member_requires_csrf_and_revokes_sessions_without_revoking_tokens(logged, gw):
+    alice_id = (await logged.get("/api/me")).json()["user"]["id"]
+    bob = (await logged.post(
+        "/api/users", json={"username": "bob", "password": "bob-password"}
+    )).json()
+    bob_id = bob["id"]
+    _, bob_session, _ = gw.state.identity.login("bob", "bob-password")
+    value, token = gw.state.identity.create_token("bob-client", bob_id)
+    await gw.state.audit.log_person({
+        "action": "user.login", "actor_user_id": bob_id, "username": "bob", "status": "ok"
+    })
+    path = f"/api/users/{bob_id}"
+
+    assert (await logged.delete(path, headers={"X-CSRF-Token": "wrong"})).status_code == 403
+    assert gw.state.identity.session(bob_session) is not None
+    assert (await logged.delete(path)).status_code == 200
+    assert gw.state.identity.session(bob_session) is None
+    assert bob_id not in {user["id"] for user in (await logged.get("/api/users")).json()["users"]}
+    assert gw.state.identity.verify_token(value)["id"] == token["id"]
+    assert (await logged.delete(f"/api/users/{alice_id}")).status_code == 400
+    assert (await logged.delete(path)).status_code == 400
+
+    history = (await logged.get("/api/audit", params={"kind": "person"})).json()["records"]
+    deleted = [row for row in history if row["action"] == "user.delete" and row["status"] == "ok"]
+    assert len(deleted) == 1
+    assert deleted[0]["username"] == "alice" and deleted[0]["object_id"] == bob_id
+    assert "bob" in deleted[0]["summary"]
+    assert any(row["action"] == "user.login" and row["username"] == "bob" for row in history)
+    assert value not in str(history) and "bob-password" not in str(history)
+    async with AsyncClient(
+        transport=ASGITransport(app=gw.mcp.http_app()), base_url="http://t"
+    ) as anonymous:
+        assert (await anonymous.delete(path)).status_code == 401
+        assert (await anonymous.delete(
+            path, headers={"Authorization": f"Bearer {value}"}
+        )).status_code == 401
+
+
+async def test_member_can_delete_own_account_when_another_enabled_account_remains(logged):
+    alice_id = (await logged.get("/api/me")).json()["user"]["id"]
+    await logged.post("/api/users", json={"username": "bob", "password": "bob-password"})
+    assert (await logged.delete(f"/api/users/{alice_id}")).status_code == 200
+    assert (await logged.get("/api/me")).status_code == 401
+    assert (await logged.get("/api/auth/status")).json() == {"setup_required": False}
+
+
 async def test_resource_crud_preserves_secret_and_hot_reload(logged, gw):
     response = await logged.post("/api/servers", json=_NEW_SERVER)
     assert response.status_code == 201 and "redis-pw" not in response.text

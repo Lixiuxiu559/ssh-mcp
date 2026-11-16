@@ -152,6 +152,7 @@ Defaults: 2 MiB uploads, 10 MiB downloads, 1 MiB text reads, and 64 KiB each for
 ## People, credentials, and audit
 
 - Web access uses username/password, HttpOnly session cookies, and CSRF protection. All enabled users have equal management access.
+- The member list supports direct enable/disable controls and confirmed deletion. The last enabled account cannot be disabled or deleted. Deleting an account revokes its web sessions while preserving audit history and MCP tokens it created.
 - MCP tokens are separate from users. A new token is shown in plaintext only once; subsequent views expose metadata only. Tokens authorize `/mcp`, not web login.
 - Restarts, upgrades, and container replacement preserve valid tokens. Creating a token or disabling its creator does not delete other tokens. Disabled tokens can be enabled again. Deleted tokens are invalidated immediately and removed from management lists while historical audit records remain available. Password changes and user disabling revoke that user's web sessions.
 - Management audit records logins and configuration changes. MCP audit records token identity, actual host/port/remote account and command or path, outcome, and duration. Retention defaults to 30 days, with filters, details, and CSV export.

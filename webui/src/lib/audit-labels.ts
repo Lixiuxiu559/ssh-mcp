@@ -6,6 +6,7 @@ export const personActionLabels: Record<string, string> = {
   "user.logout": "退出登录",
   "user.create": "添加成员",
   "user.update": "修改成员",
+  "user.delete": "删除成员",
   "server.create": "添加服务器",
   "server.update": "更新服务器",
   "server.delete": "删除服务器",

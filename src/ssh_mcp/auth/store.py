@@ -251,6 +251,23 @@ class IdentityStore:
                 self._event(conn, event)
             return self._user(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
 
+    def delete_user(self, user_id: str, event: dict[str, Any] | None = None) -> None:
+        with self._lock:
+            conn = self._connection()
+            with conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+                if row is None:
+                    raise IdentityError("用户不存在")
+                count = conn.execute("SELECT count(*) FROM users WHERE enabled=1").fetchone()[0]
+                if row["enabled"] and count <= 1:
+                    raise IdentityError("不能删除最后一个可登录用户")
+                conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+                conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+                if event is not None:
+                    event["summary"] = f"删除成员 {row['username']}；已撤销网页登录会话"
+                self._event(conn, event, object_id=user_id)
+
     def login(
         self, username: str, password: str, event: dict[str, Any] | None = None
     ) -> tuple[dict[str, Any], str, str]:

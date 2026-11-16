@@ -1,6 +1,7 @@
 """身份迁移、独立凭证、持久化与事务审计场景。"""
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,81 @@ def test_users_same_capabilities_last_user_and_sessions(tmp_path):
     with pytest.raises(IdentityError, match="最后一个"):
         store.update_user(first["id"], {"enabled": False})
     assert all("admin" not in row for row in store.list_users())
+
+
+def test_delete_user_revokes_sessions_preserves_tokens_and_identity_history(tmp_path):
+    store, first = setup_store(tmp_path)
+    second = store.create_user("second", "second-password")
+    _, session, _ = store.login("second", "second-password")
+    _, other_session, _ = store.login("second", "second-password")
+    value, token = store.create_token("machine", second["id"])
+    event = {"action": "user.delete", "actor_user_id": first["id"]}
+
+    store.delete_user(second["id"], event)
+
+    assert [row["id"] for row in store.list_users()] == [first["id"]]
+    assert store.session(session) is None and store.session(other_session) is None
+    with pytest.raises(IdentityError, match="用户名或密码"):
+        store.login("second", "second-password")
+    assert store.verify_token(value)["id"] == token["id"]
+    assert store.token_info(token["id"])["created_by"] == second["id"]
+    assert event["object_id"] == second["id"] and "second" in event["summary"]
+    with pytest.raises(IdentityError, match="用户不存在"):
+        store.update_user(second["id"], {"enabled": True})
+
+    store.close()
+    reopened = IdentityStore(store.path)
+    assert not reopened.setup_required
+    assert reopened.verify_token(value)["id"] == token["id"]
+    replacement = reopened.create_user("second", "replacement-password")
+    assert replacement["id"] != second["id"]
+    assert reopened.session(session) is None
+    reopened.close()
+
+
+def test_delete_user_protects_last_enabled_account_and_allows_disabled_deletion(tmp_path):
+    store, first = setup_store(tmp_path)
+    second = store.create_user("second", "second-password")
+    store.update_user(second["id"], {"enabled": False})
+    with pytest.raises(IdentityError, match="最后一个"):
+        store.delete_user(first["id"])
+    store.delete_user(second["id"])
+    assert [row["id"] for row in store.list_users()] == [first["id"]]
+
+
+def test_delete_user_rolls_back_sessions_and_account_when_outbox_fails(tmp_path, monkeypatch):
+    store, _ = setup_store(tmp_path)
+    second = store.create_user("second", "second-password")
+    _, session, _ = store.login("second", "second-password")
+
+    def fail_event(*args, **kwargs):
+        raise sqlite3.OperationalError("simulated outbox failure")
+
+    monkeypatch.setattr(store, "_event", fail_event)
+    with pytest.raises(sqlite3.OperationalError, match="outbox"):
+        store.delete_user(second["id"], {"action": "user.delete"})
+    assert store.session(session)[0]["id"] == second["id"]
+    assert second["id"] in {row["id"] for row in store.list_users()}
+
+
+def test_concurrent_user_deletion_keeps_one_enabled_account(tmp_path):
+    store, first = setup_store(tmp_path)
+    second = store.create_user("second", "second-password")
+
+    def remove(user_id):
+        connection = IdentityStore(store.path)
+        try:
+            connection.delete_user(user_id)
+            return True
+        except IdentityError as error:
+            assert "最后一个" in str(error)
+            return False
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        assert sorted(workers.map(remove, [first["id"], second["id"]])) == [False, True]
+    assert len(store.list_users()) == 1 and store.list_users()[0]["enabled"]
 
 
 async def test_legacy_tokens_import_once_and_survive_restart(tmp_path):

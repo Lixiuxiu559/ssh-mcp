@@ -5,7 +5,6 @@ import {
   Descriptions,
   Flex,
   Space,
-  Table,
   Tabs,
   Tag,
   Typography,
@@ -24,6 +23,8 @@ import {
 import type { AuditRecord, ServerEntry } from "../types";
 import { useResource } from "../lib/use-resource";
 import { formatTime, formatCompactTime } from "../lib/utils";
+import { useListPagination } from "../lib/pagination";
+import { AppTable } from "./AppTable";
 import { ListNotice } from "./ListStates";
 import { Feedback, Status } from "./Feedback";
 
@@ -54,8 +55,15 @@ export function ServerDetails({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { pagination } = useListPagination();
+  const { current, pageSize } = pagination;
+  const serverQuery = `kind=mcp&server=${encodeURIComponent(server.alias)}`;
+  const recentAudit = useResource<{ records: AuditRecord[]; total: number }>(
+    `/api/audit?${serverQuery}&limit=2`,
+    { records: [], total: 0 },
+  );
   const audit = useResource<{ records: AuditRecord[]; total: number }>(
-    `/api/audit?kind=mcp&server=${encodeURIComponent(server.alias)}&limit=20`,
+    `/api/audit?${serverQuery}&limit=${pageSize}&offset=${(current - 1) * pageSize}`,
     { records: [], total: 0 },
   );
   const noCalls = !audit.loading && !audit.error && !audit.data.records.length;
@@ -112,11 +120,11 @@ export function ServerDetails({
       </Card>
       <Card
         title="最近调用"
-        loading={audit.loading && !audit.data.records.length}
+        loading={recentAudit.loading && !recentAudit.data.records.length}
       >
-        <Feedback message={audit.error} />
+        <Feedback message={recentAudit.error} />
         <Flex vertical gap={12}>
-          {audit.data.records.slice(0, 2).map((record) => (
+          {recentAudit.data.records.map((record) => (
             <Flex
               key={record.id}
               justify="space-between"
@@ -141,13 +149,15 @@ export function ServerDetails({
             </Flex>
           ))}
         </Flex>
-        {noCalls && (
-          <ListNotice
-            compact
-            title="暂无调用记录"
-            description="通过 MCP 在这台服务器上执行工具后，即可查看最近调用。"
-          />
-        )}
+        {!recentAudit.loading &&
+          !recentAudit.error &&
+          !recentAudit.data.records.length && (
+            <ListNotice
+              compact
+              title="暂无调用记录"
+              description="通过 MCP 在这台服务器上执行工具后，即可查看最近调用。"
+            />
+          )}
       </Card>
     </Flex>
   );
@@ -198,26 +208,19 @@ export function ServerDetails({
           description="首次 MCP 调用后，这里会显示调用时间、凭证和执行结果。"
         />
       ) : (
-        <>
-          <Table<AuditRecord>
-            dataSource={audit.data.records}
-            columns={columns}
-            rowKey="id"
-            pagination={false}
-            loading={audit.loading}
-            tableLayout="fixed"
-            scroll={{ x: 600 }}
-          />
-          {!!audit.data.total && (
-            <Typography.Paragraph
-              type="secondary"
-              style={{ marginTop: 12, marginBottom: 0 }}
-            >
-              展示最近 {audit.data.records.length} 条，共 {audit.data.total}{" "}
-              条记录
-            </Typography.Paragraph>
-          )}
-        </>
+        <AppTable<AuditRecord>
+          dataSource={audit.data.records}
+          columns={columns}
+          rowKey="id"
+          pagination={{
+            ...pagination,
+            total: audit.data.total,
+            disabled: audit.loading,
+          }}
+          loading={audit.loading}
+          tableLayout="fixed"
+          scroll={{ x: 600 }}
+        />
       )}
     </Card>
   );

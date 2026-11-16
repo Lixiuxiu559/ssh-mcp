@@ -7,7 +7,6 @@ import {
   Input,
   Select,
   Space,
-  Table,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -15,6 +14,7 @@ import { api, json } from "../api";
 import type { AuditRecord, ServerEntry } from "../types";
 import { useResource } from "../lib/use-resource";
 import { errorText, formatCompactTime } from "../lib/utils";
+import { AppTable } from "../components/AppTable";
 import { Feedback, Status } from "../components/Feedback";
 import { ListNotice, ResourceStatus } from "../components/ListStates";
 import { PageHeading } from "../components/PageHeading";
@@ -36,7 +36,7 @@ function RecentCalls({ alias }: { alias: string }) {
   if (audit.error)
     return <Typography.Text type="secondary">记录暂不可用</Typography.Text>;
   return (
-    <Flex vertical gap={2}>
+    <Flex vertical gap={2} align="center">
       <Typography.Text>{audit.data.total} 次</Typography.Text>
       {latest && (
         <Typography.Text type="secondary">
@@ -168,10 +168,10 @@ export default function Servers() {
       title: "服务器 / 环境",
       width: "26%",
       render: (_, server) => (
-        <Flex vertical gap={2}>
+        <Flex vertical gap={2} align="center">
           <Button
             type="link"
-            style={{ padding: 0, height: "auto", justifyContent: "flex-start" }}
+            style={{ padding: 0, height: "auto", justifyContent: "center" }}
             aria-label={`查看 ${server.alias} 详情`}
             onClick={(event) => {
               event.stopPropagation();
@@ -200,7 +200,7 @@ export default function Servers() {
       render: (_, server) => {
         const check = checks[server.alias];
         return (
-          <Flex vertical gap={2}>
+          <Flex vertical gap={2} align="center">
             <Status
               value={check ? (check.ok ? "ok" : "error") : "unchecked"}
               label={check ? (check.ok ? "检测通过" : "连接失败") : "尚未检测"}
@@ -244,20 +244,7 @@ export default function Servers() {
         />
       ) : (
         <>
-          <PageHeading
-            title="服务器管理"
-            extra={
-              hasServers && (
-                <Button
-                  type="primary"
-                  onClick={() => setEditor(null)}
-                  icon={<Plus size={15} aria-hidden="true" />}
-                >
-                  新增
-                </Button>
-              )
-            }
-          />
+          <PageHeading title="服务器管理" />
           {!hasServers ? (
             loading || error ? (
               <ResourceStatus
@@ -312,6 +299,13 @@ export default function Servers() {
                 >
                   共 {loading || error ? "—" : filtered.length} 台
                 </Typography.Text>
+                <Button
+                  type="primary"
+                  onClick={() => setEditor(null)}
+                  icon={<Plus size={15} aria-hidden="true" />}
+                >
+                  新增
+                </Button>
               </Flex>
               <Feedback message={error} />
               {error && <Button onClick={reload}>重试</Button>}
@@ -322,13 +316,12 @@ export default function Servers() {
                   onClear={clearFilters}
                 />
               ) : (
-                <Table<ServerEntry>
+                <AppTable<ServerEntry>
                   className="server-list"
                   aria-label="服务器列表"
                   dataSource={filtered}
                   columns={columns}
                   rowKey="alias"
-                  pagination={false}
                   loading={loading}
                   tableLayout="fixed"
                   scroll={{ x: 800 }}
