@@ -6,23 +6,19 @@
     <meta name="color-scheme" content="light dark" />
     <title>SSH MCP · 链路工作台</title>
     <script>
-      // Mantine 色彩方案引导：仅亮色/暗色两态；旧 linkage-theme 偏好做一次性迁移。
       (() => {
+        let stored = "light";
         try {
-          let stored = localStorage.getItem("mantine-color-scheme-value");
-          if (stored !== "light" && stored !== "dark") {
-            const legacy = localStorage.getItem("linkage-theme");
-            stored = legacy === "dark" ? "dark" : "light";
-            localStorage.setItem("mantine-color-scheme-value", stored);
-          }
-          document.documentElement.dataset.mantineColorScheme = stored;
-        } catch {
-          document.documentElement.dataset.mantineColorScheme = "light";
-        }
+          stored = localStorage.getItem("ssh-mcp-theme")
+            || localStorage.getItem("mantine-color-scheme-value")
+            || localStorage.getItem("linkage-theme")
+            || "light";
+        } catch {}
+        document.documentElement.dataset.theme = stored === "dark" ? "dark" : "light";
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-DnWUXjZu.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BoQmhOHS.css">
+    <script type="module" crossorigin src="./assets/index-BKCvA8WJ.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DGAFV-0M.css">
   </head>
   <body>
     <div id="root"></div>

@@ -1,59 +1,53 @@
-import { useState, type FormEvent } from "react";
-import {
-  AlertCircle,
-  ArrowRight,
-  Link2,
-  LockKeyhole,
-  Terminal,
-} from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Link2, LockKeyhole, Terminal } from "lucide-react";
 import {
   Alert,
-  Box,
   Button,
-  Grid,
-  Group,
-  Paper,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+  Card,
+  Col,
+  Flex,
+  Form,
+  Input,
+  Row,
+  Tag,
+  Typography,
+} from "antd";
 import { api, json, setCsrfToken } from "../api";
 import type { Session } from "../types";
 import { ThemeControl } from "../components/theme-controls";
+import { RepositoryLink } from "../components/RepositoryLink";
 import { errorText } from "../lib/utils";
+
+interface LoginValues {
+  username: string;
+  password: string;
+  confirm?: string;
+  setup_key?: string;
+}
 
 export default function Login({
   setup,
   notice,
+  noticeType = "warning",
   onLogin,
 }: {
   setup: boolean;
   notice?: string;
+  noticeType?: "success" | "warning";
   onLogin: (session: Session) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [setupKey, setSetupKey] = useState("");
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(values: LoginValues) {
     setError("");
-    if (setup && password !== confirm) {
-      setError("两次输入的密码不一致");
-      return;
-    }
     setBusy(true);
     try {
       const result = await api<Session>(
         `/api/auth/${setup ? "setup" : "login"}`,
         json("POST", {
-          username,
-          password,
-          ...(setup ? { setup_key: setupKey } : {}),
+          username: values.username,
+          password: values.password,
+          ...(setup ? { setup_key: values.setup_key } : {}),
         }),
       );
       setCsrfToken(result.csrf_token);
@@ -65,180 +59,182 @@ export default function Login({
     }
   }
   return (
-    <Stack mih="100vh" justify="space-between" gap={0}>
-      <Group justify="space-between" align="center" px="xl" py="md">
-        <Group gap="xs">
+    <Flex vertical className="login-page">
+      <Flex justify="space-between" align="center" className="login-header">
+        <Flex align="center" gap={8}>
           <Link2 size={20} aria-hidden="true" />
-          <Text fw={700}>SSH MCP</Text>
-          <Text c="dimmed" size="sm">
-            Gateway Console
-          </Text>
-        </Group>
+          <Typography.Text strong>SSH MCP</Typography.Text>
+          <Typography.Text type="secondary">Gateway Console</Typography.Text>
+        </Flex>
         <ThemeControl />
-      </Group>
-      <Box
-        px="xl"
-        pb="xl"
-        style={{ flex: 1, display: "flex", alignItems: "center" }}
-      >
-        <Grid gap={48} align="center" maw={1040} mx="auto" w="100%">
-          <Grid.Col span={{ base: 12, md: 7 }}>
-            <Stack gap="md">
-              <Text
-                size="xs"
-                fw={700}
-                c="dimmed"
-                tt="uppercase"
-                style={{ letterSpacing: 1 }}
-              >
+      </Flex>
+      <Flex align="center" justify="center" className="login-content">
+        <Row align="middle" gutter={48} className="login-columns">
+          <Col span={14}>
+            <Flex vertical gap={16} className="login-introduction">
+              <Typography.Text type="secondary" className="login-eyebrow">
                 MCP CONNECTION WORKSPACE
-              </Text>
-              <Title order={1} fz={28} lh={1.3}>
+              </Typography.Text>
+              <Typography.Title
+                level={1}
+                className="login-headline"
+                style={{ margin: 0 }}
+              >
                 让每次远程操作
                 <br />
                 都有清晰的来路。
-              </Title>
-              <Text c="dimmed" maw={420}>
+              </Typography.Title>
+              <Typography.Paragraph
+                type="secondary"
+                className="login-description"
+              >
                 连接你的服务器，管理服务凭证，追溯每一次调用。一个工作区，保留完整的操作上下文。
-              </Text>
-              <Group gap="sm">
-                <Paper
-                  withBorder
-                  radius="xl"
-                  px="sm"
-                  py={6}
-                  display="inline-flex"
+              </Typography.Paragraph>
+              <Flex align="center" gap={12}>
+                <Tag
+                  icon={<Terminal size={15} aria-hidden="true" />}
+                  className="login-connection"
+                  variant="outlined"
                 >
-                  <Group gap={6} wrap="nowrap">
-                    <Terminal size={15} aria-hidden="true" />
-                    <Text size="sm">运维客户端</Text>
-                  </Group>
-                </Paper>
+                  运维客户端
+                </Tag>
                 <ArrowRight size={16} aria-hidden="true" />
-                <Paper
-                  withBorder
-                  radius="xl"
-                  px="sm"
-                  py={6}
-                  display="inline-flex"
+                <Tag
+                  icon={<Link2 size={15} aria-hidden="true" />}
+                  className="login-connection"
+                  variant="outlined"
                 >
-                  <Group gap={6} wrap="nowrap">
-                    <Link2 size={15} aria-hidden="true" />
-                    <Text size="sm">SSH MCP</Text>
-                  </Group>
-                </Paper>
-              </Group>
-              <Group gap="xs" c="dimmed" wrap="nowrap">
+                  SSH MCP
+                </Tag>
+              </Flex>
+              <Flex align="center" gap={8} className="login-identity">
                 <LockKeyhole size={16} aria-hidden="true" />
-                <Text size="sm">
+                <Typography.Text type="secondary">
                   人员使用账号密码登录。MCP token 在工作区内独立管理。
-                </Text>
-              </Group>
-            </Stack>
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 5 }}>
-            <Paper withBorder p="xl" radius="lg" shadow="sm">
-              <Stack gap={4} mb="lg">
-                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                </Typography.Text>
+              </Flex>
+            </Flex>
+          </Col>
+          <Col span={10}>
+            <Card className="login-card">
+              <Flex vertical gap={4} className="login-card-heading">
+                <Typography.Text type="secondary" className="login-eyebrow">
                   {setup ? "FIRST-TIME SETUP" : "WELCOME BACK"}
-                </Text>
-                <Title order={2}>{setup ? "建立第一个用户" : "登录工作区"}</Title>
-                <Text size="sm" c="dimmed">
+                </Typography.Text>
+                <Typography.Title level={2} style={{ margin: 0 }}>
+                  {setup ? "建立第一个用户" : "登录工作区"}
+                </Typography.Title>
+                <Typography.Text type="secondary">
                   {setup
                     ? "使用服务端初始化密钥创建账号，原有 MCP token 会继续保留。"
                     : "使用你的用户名与密码继续。"}
-                </Text>
-              </Stack>
-              <form onSubmit={submit}>
-                <Stack gap="md">
-                  {(error || notice) && (
-                    <Alert
-                      color="red"
-                      variant="light"
-                      icon={<AlertCircle size={16} aria-hidden="true" />}
-                      role="alert"
-                    >
-                      {error || notice}
-                    </Alert>
-                  )}
-                  {setup && (
-                    <PasswordInput
-                      label="初始化密钥"
-                      description="从服务启动日志提示的 setup.key 文件读取。"
-                      value={setupKey}
-                      onChange={(event) => setSetupKey(event.currentTarget.value)}
+                </Typography.Text>
+              </Flex>
+              {(error || notice) && (
+                <Alert
+                  type={error ? "error" : noticeType}
+                  showIcon
+                  title={error || notice}
+                  style={{ marginBottom: 16 }}
+                  role="alert"
+                />
+              )}
+              <Form<LoginValues>
+                className="login-form"
+                layout="vertical"
+                onFinish={submit}
+                disabled={busy}
+                autoComplete="on"
+              >
+                {setup && (
+                  <Form.Item
+                    name="setup_key"
+                    label="初始化密钥"
+                    extra="从服务启动日志提示的 setup.key 文件读取。"
+                    rules={[{ required: true, message: "请输入初始化密钥" }]}
+                  >
+                    <Input.Password
                       autoComplete="off"
-                      required
                       placeholder="服务端一次性初始化密钥"
                     />
-                  )}
-                  <TextInput
-                    label="用户名"
-                    value={username}
-                    onChange={(event) => setUsername(event.currentTarget.value)}
+                  </Form.Item>
+                )}
+                <Form.Item
+                  name="username"
+                  label="用户名"
+                  rules={[{ required: true, message: "请输入用户名" }]}
+                >
+                  <Input
                     autoComplete="username"
-                    required
                     maxLength={64}
                     placeholder="输入用户名"
                   />
-                  <PasswordInput
-                    label="密码"
-                    description={
-                      setup ? "至少 10 位，请使用独立的登录密码。" : undefined
-                    }
-                    value={password}
-                    onChange={(event) => setPassword(event.currentTarget.value)}
+                </Form.Item>
+                <Form.Item
+                  name="password"
+                  label="密码"
+                  rules={[
+                    { required: true, message: "请输入密码" },
+                    ...(setup
+                      ? [{ min: 10, message: "密码至少需要 10 位" }]
+                      : []),
+                  ]}
+                >
+                  <Input.Password
                     autoComplete={setup ? "new-password" : "current-password"}
-                    minLength={setup ? 10 : undefined}
                     maxLength={1024}
-                    required
-                    placeholder="输入密码"
+                    placeholder={setup ? "至少 10 位" : "输入密码"}
                   />
-                  {setup && (
-                    <PasswordInput
-                      label="确认密码"
-                      value={confirm}
-                      onChange={(event) => setConfirm(event.currentTarget.value)}
+                </Form.Item>
+                {setup && (
+                  <Form.Item
+                    name="confirm"
+                    label="确认密码"
+                    dependencies={["password"]}
+                    rules={[
+                      { required: true, message: "请再次输入密码" },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          return !value || getFieldValue("password") === value
+                            ? Promise.resolve()
+                            : Promise.reject(new Error("两次输入的密码不一致"));
+                        },
+                      }),
+                    ]}
+                  >
+                    <Input.Password
                       autoComplete="new-password"
-                      required
                       placeholder="再次输入密码"
                     />
-                  )}
-                  <Button
-                    type="submit"
-                    size="md"
-                    loading={busy}
-                    rightSection={
-                      busy ? undefined : (
-                        <ArrowRight size={16} aria-hidden="true" />
-                      )
-                    }
-                  >
-                    {busy
-                      ? "正在处理…"
-                      : setup
-                        ? "创建用户并进入"
-                        : "登录"}
-                  </Button>
-                </Stack>
-              </form>
-              <Text size="xs" c="dimmed" mt="lg">
+                  </Form.Item>
+                )}
+                <Button
+                  block
+                  type="primary"
+                  htmlType="submit"
+                  size="large"
+                  loading={busy}
+                  icon={<ArrowRight size={16} aria-hidden="true" />}
+                  iconPlacement="end"
+                >
+                  {setup ? "创建用户并进入" : "登录"}
+                </Button>
+              </Form>
+              <Typography.Paragraph type="secondary" className="login-note">
                 {setup
                   ? "初始化完成后此入口将关闭，所有启用人员具有相同管理能力。"
                   : "登录状态仅用于管理后台，不作为 MCP 调用凭证。"}
-              </Text>
-            </Paper>
-          </Grid.Col>
-        </Grid>
-      </Box>
-      <Group justify="center" py="md" gap={4}>
-        <Text size="xs" c="dimmed">
-          SSH MCP
-        </Text>
-        <Text size="xs" c="dimmed">
-          Gateway Console
-        </Text>
-      </Group>
-    </Stack>
+              </Typography.Paragraph>
+            </Card>
+          </Col>
+        </Row>
+      </Flex>
+      <Flex justify="center" align="center" gap={16} className="login-footer">
+        <Typography.Text type="secondary">
+          SSH MCP Gateway Console
+        </Typography.Text>
+        <RepositoryLink />
+      </Flex>
+    </Flex>
   );
 }

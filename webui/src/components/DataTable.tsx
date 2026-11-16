@@ -1,35 +1,21 @@
-import { useMemo, useState, type Key, type ReactNode } from "react";
-import { Box, Button, EmptyState, Skeleton, Table } from "@mantine/core";
-import {
-  AlertCircle,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  SearchX,
-} from "lucide-react";
+import type { Key, ReactNode } from "react";
+import { Button, Flex, Table } from "antd";
+import type { ColumnsType } from "antd/es/table";
+import { Feedback } from "./Feedback";
+import { ListNotice } from "./ListStates";
 
 export interface TableColumn<T> {
   id: string;
   header: ReactNode;
   render?: (row: T) => ReactNode;
-  /** 排序取值；数字按数值比较，其余按 zh-CN 字典序。 */
   value?: (row: T) => string | number | null | undefined;
   sortable?: boolean;
   align?: "left" | "center" | "right";
   width?: number | string;
+  fixed?: "left" | "right";
 }
 
-type SortState = { key: string; dir: "asc" | "desc" } | null;
-
-function cellText<T>(column: TableColumn<T>, row: T): ReactNode {
-  if (column.render) return column.render(row);
-  const value = column.value
-    ? column.value(row)
-    : (row as Record<string, unknown>)[column.id];
-  return value == null || value === "" ? "—" : String(value);
-}
-
-export function DataTable<T>({
+export function DataTable<T extends object>({
   columns,
   data,
   rowKey,
@@ -37,9 +23,12 @@ export function DataTable<T>({
   error,
   onRetry,
   empty = "暂无记录",
+  emptyDescription = "添加记录或调整筛选条件后重试",
   emptyAction,
   sortable = true,
   stickyHeader = false,
+  fixedLayout = false,
+  minWidth = 200,
 }: {
   columns: TableColumn<T>[];
   data: T[];
@@ -48,138 +37,70 @@ export function DataTable<T>({
   error?: string;
   onRetry?: () => void;
   empty?: string;
+  emptyDescription?: string;
   emptyAction?: ReactNode;
   sortable?: boolean;
   stickyHeader?: boolean;
+  fixedLayout?: boolean;
+  minWidth?: number;
 }) {
-  const [sort, setSort] = useState<SortState>(null);
-  const rows = useMemo(() => {
-    if (!sort) return data;
-    const column = columns.find((item) => item.id === sort.key);
-    if (!column?.value) return data;
-    const factor = sort.dir === "asc" ? 1 : -1;
-    return [...data].sort((a, b) => {
-      const x = column.value!(a);
-      const y = column.value!(b);
-      if (typeof x === "number" && typeof y === "number") return (x - y) * factor;
-      return String(x ?? "").localeCompare(String(y ?? ""), "zh-CN") * factor;
-    });
-  }, [data, sort, columns]);
-
-  const retry = onRetry ? (
-    <Button variant="default" size="xs" onClick={onRetry} disabled={loading}>
-      重试
-    </Button>
-  ) : null;
-
-  function toggleSort(column: TableColumn<T>) {
-    setSort((old) =>
-      old?.key === column.id
-        ? { key: column.id, dir: old.dir === "asc" ? "desc" : "asc" }
-        : { key: column.id, dir: "asc" },
-    );
-  }
-
+  const definitions: ColumnsType<T> = columns.map((column) => ({
+    key: column.id,
+    title: column.header,
+    width: column.width,
+    fixed: column.fixed,
+    align: column.align,
+    sorter:
+      sortable && column.sortable !== false && column.value
+        ? (a, b) => {
+            const x = column.value!(a);
+            const y = column.value!(b);
+            return typeof x === "number" && typeof y === "number"
+              ? x - y
+              : String(x ?? "").localeCompare(String(y ?? ""), "zh-CN");
+          }
+        : undefined,
+    render: (_, row) => {
+      if (column.render) return column.render(row);
+      const value = column.value
+        ? column.value(row)
+        : (row as Record<string, unknown>)[column.id];
+      return value == null || value === "" ? "—" : String(value);
+    },
+  }));
   return (
-    <Box>
-      <Table.ScrollContainer minWidth={200} aria-busy={loading}>
-        <Table
-          highlightOnHover
-          verticalSpacing="sm"
-          horizontalSpacing="md"
-          stickyHeader={stickyHeader}
-        >
-          <Table.Thead>
-            <Table.Tr>
-              {columns.map((column) => {
-                const canSort =
-                  sortable && column.sortable !== false && !!column.value;
-                const sorted = sort?.key === column.id ? sort.dir : null;
-                return (
-                  <Table.Th
-                    key={column.id}
-                    w={column.width}
-                    style={column.align ? { textAlign: column.align } : undefined}
-                    aria-sort={
-                      canSort
-                        ? sorted === "asc"
-                          ? "ascending"
-                          : sorted === "desc"
-                            ? "descending"
-                            : "none"
-                        : undefined
-                    }
-                  >
-                    {canSort ? (
-                      <button
-                        type="button"
-                        className="sort-button"
-                        onClick={() => toggleSort(column)}
-                      >
-                        {column.header}
-                        {sorted === "asc" ? (
-                          <ArrowUp size={12} aria-hidden="true" />
-                        ) : sorted === "desc" ? (
-                          <ArrowDown size={12} aria-hidden="true" />
-                        ) : (
-                          <ArrowUpDown size={12} aria-hidden="true" />
-                        )}
-                      </button>
-                    ) : (
-                      column.header
-                    )}
-                  </Table.Th>
-                );
-              })}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {loading && !rows.length
-              ? Array.from({ length: 4 }, (_, index) => (
-                  <Table.Tr key={`skeleton-${index}`}>
-                    {columns.map((column) => (
-                      <Table.Td key={column.id}>
-                        <Skeleton height={12} />
-                      </Table.Td>
-                    ))}
-                  </Table.Tr>
-                ))
-              : rows.map((row, index) => (
-                  <Table.Tr key={rowKey ? rowKey(row, index) : index}>
-                    {columns.map((column) => (
-                      <Table.Td
-                        key={column.id}
-                        style={
-                          column.align ? { textAlign: column.align } : undefined
-                        }
-                      >
-                        {cellText(column, row)}
-                      </Table.Td>
-                    ))}
-                  </Table.Tr>
-                ))}
-          </Table.Tbody>
-        </Table>
-        {!rows.length && !loading && (
-          error ? (
-            <EmptyState
-              icon={<AlertCircle size={26} aria-hidden="true" />}
-              title="加载失败"
-              description={error}
-            >
-              <EmptyState.Actions>{retry}</EmptyState.Actions>
-            </EmptyState>
-          ) : (
-            <EmptyState
-              icon={<SearchX size={26} aria-hidden="true" />}
-              title={empty}
-              description="添加记录或调整筛选条件后重试"
-            >
-              {emptyAction && <EmptyState.Actions>{emptyAction}</EmptyState.Actions>}
-            </EmptyState>
-          )
-        )}
-      </Table.ScrollContainer>
-    </Box>
+    <Flex vertical gap={12}>
+      {error && (
+        <div>
+          <Feedback message={error} />
+          {onRetry && (
+            <Button onClick={onRetry} loading={loading}>
+              重试
+            </Button>
+          )}
+        </div>
+      )}
+      {!loading && !error && !data.length ? (
+        <ListNotice
+          title={empty}
+          description={emptyDescription}
+          action={emptyAction}
+        />
+      ) : (
+        <Table<T>
+          size="middle"
+          dataSource={data}
+          columns={definitions}
+          rowKey={(row, index) =>
+            rowKey ? rowKey(row, index ?? 0) : String(index)
+          }
+          loading={loading}
+          pagination={false}
+          sticky={stickyHeader}
+          tableLayout={fixedLayout ? "fixed" : "auto"}
+          scroll={{ x: minWidth }}
+        />
+      )}
+    </Flex>
   );
 }

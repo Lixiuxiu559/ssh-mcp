@@ -1,20 +1,22 @@
 import { useState } from "react";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Search } from "lucide-react";
 import {
   Button,
   Card,
-  Group,
-  Paper,
+  Flex,
+  Input,
   Select,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+  Space,
+  Table,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { api, json } from "../api";
 import type { AuditRecord, ServerEntry } from "../types";
 import { useResource } from "../lib/use-resource";
 import { errorText, formatCompactTime } from "../lib/utils";
 import { Feedback, Status } from "../components/Feedback";
+import { ListNotice, ResourceStatus } from "../components/ListStates";
 import { PageHeading } from "../components/PageHeading";
 import { AppModal } from "../components/AppModal";
 import { ServerEditor } from "../components/ServerEditor";
@@ -23,53 +25,25 @@ import {
   type ConnectionCheck,
 } from "../components/ServerDetails";
 
-function ServerRow({
-  server,
-  check,
-  onOpen,
-}: {
-  server: ServerEntry;
-  check?: ConnectionCheck;
-  onOpen: () => void;
-}) {
+function RecentCalls({ alias }: { alias: string }) {
   const audit = useResource<{ records: AuditRecord[]; total: number }>(
-    `/api/audit?kind=mcp&server=${encodeURIComponent(server.alias)}&days=1&limit=1`,
+    `/api/audit?kind=mcp&server=${encodeURIComponent(alias)}&days=1&limit=1`,
     { records: [], total: 0 },
   );
   const latest = audit.data.records[0];
+  if (audit.loading)
+    return <Typography.Text type="secondary">正在读取…</Typography.Text>;
+  if (audit.error)
+    return <Typography.Text type="secondary">记录暂不可用</Typography.Text>;
   return (
-    <Paper
-      component="button"
-      className="server-row"
-      onClick={onOpen}
-      p="md"
-      w="100%"
-      style={{ border: "none", background: "transparent", textAlign: "left" }}
-    >
-      <Stack gap={4}>
-        <Group justify="space-between" wrap="nowrap" gap="sm">
-          <Group gap="sm" wrap="nowrap">
-            <Text fw={700}>{server.alias}</Text>
-            <Status
-              value={check ? (check.ok ? "ok" : "error") : "unchecked"}
-              label={check ? (check.ok ? "检测通过" : "连接失败") : "尚未检测"}
-            />
-          </Group>
-          <ChevronRight size={14} aria-hidden="true" />
-        </Group>
-        <Text size="sm" c="dimmed">
-          {server.tags[0] || "未分组"} · {server.host}:{server.port}
-        </Text>
-        <Text size="xs" c="dimmed">
-          {audit.loading
-            ? "正在读取调用记录…"
-            : audit.error
-              ? "调用记录暂不可用"
-              : `24h ${audit.data.total} 次 · 最近 ${latest ? formatCompactTime(latest.ts) : "暂无调用"}`}
-        </Text>
-        {check && !check.ok && <Text size="sm" c="red">{check.message}</Text>}
-      </Stack>
-    </Paper>
+    <Flex vertical gap={2}>
+      <Typography.Text>{audit.data.total} 次</Typography.Text>
+      {latest && (
+        <Typography.Text type="secondary">
+          最近 {formatCompactTime(latest.ts)}
+        </Typography.Text>
+      )}
+    </Flex>
   );
 }
 
@@ -96,6 +70,7 @@ export default function Servers() {
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
   const [checks, setChecks] = useState<Record<string, ConnectionCheck>>({});
+  const hasServers = data.servers.length > 0;
   const tags = [...new Set(data.servers.flatMap((server) => server.tags))];
   const tagOptions = [
     { value: "", label: "全部环境" },
@@ -123,6 +98,20 @@ export default function Servers() {
     setQuery("");
     setTag("");
     setConnection("");
+  }
+  function serverSaved() {
+    if (!hasServers) clearFilters();
+    const alias = editor?.alias;
+    if (alias)
+      setChecks((old) => {
+        const next = { ...old };
+        delete next[alias];
+        return next;
+      });
+    setEditor(undefined);
+    setDetails(null);
+    reload();
+    setMessage("服务器配置已保存。");
   }
   async function test(server: ServerEntry) {
     setBusy(server.alias);
@@ -169,6 +158,72 @@ export default function Servers() {
       setBusy("");
     }
   }
+  function openDetails(server: ServerEntry) {
+    setDetails(server);
+    setActionError("");
+  }
+  const columns: ColumnsType<ServerEntry> = [
+    {
+      key: "alias",
+      title: "服务器 / 环境",
+      width: "26%",
+      render: (_, server) => (
+        <Flex vertical gap={2}>
+          <Button
+            type="link"
+            style={{ padding: 0, height: "auto", justifyContent: "flex-start" }}
+            aria-label={`查看 ${server.alias} 详情`}
+            onClick={(event) => {
+              event.stopPropagation();
+              openDetails(server);
+            }}
+          >
+            {server.alias}
+          </Button>
+          {!!server.tags.length && (
+            <Typography.Text type="secondary">
+              {server.tags.join(" · ")}
+            </Typography.Text>
+          )}
+        </Flex>
+      ),
+    },
+    {
+      key: "host",
+      title: "主机端点",
+      width: "31%",
+      render: (_, server) => `${server.host}:${server.port}`,
+    },
+    {
+      key: "connection",
+      title: "手动连接检测",
+      render: (_, server) => {
+        const check = checks[server.alias];
+        return (
+          <Flex vertical gap={2}>
+            <Status
+              value={check ? (check.ok ? "ok" : "error") : "unchecked"}
+              label={check ? (check.ok ? "检测通过" : "连接失败") : "尚未检测"}
+            />
+            {check && !check.ok && (
+              <Typography.Text type="danger">{check.message}</Typography.Text>
+            )}
+          </Flex>
+        );
+      },
+    },
+    {
+      key: "audit",
+      title: "近 24h 调用",
+      render: (_, server) => <RecentCalls alias={server.alias} />,
+    },
+    {
+      key: "details",
+      title: <span className="sr-only">查看详情</span>,
+      width: 44,
+      render: () => <ChevronRight size={14} aria-hidden="true" />,
+    },
+  ];
   return (
     <>
       <Feedback message={actionError} onDismiss={() => setActionError("")} />
@@ -191,124 +246,107 @@ export default function Servers() {
         <>
           <PageHeading
             title="服务器管理"
-            description="管理网关连接的 Linux 目标服务器"
             extra={
-              <Button
-                onClick={() => setEditor(null)}
-                leftSection={<Plus size={15} aria-hidden="true" />}
-              >
-                新增
-              </Button>
+              hasServers && (
+                <Button
+                  type="primary"
+                  onClick={() => setEditor(null)}
+                  icon={<Plus size={15} aria-hidden="true" />}
+                >
+                  新增
+                </Button>
+              )
             }
           />
-          <Card withBorder p="sm" radius="md" mb="md">
-            <Group align="center" gap="sm" wrap="wrap">
-              <TextInput
-                flex={1}
-                miw={220}
-                aria-label="搜索服务器"
-                placeholder="搜索服务器名称..."
-                leftSection={<Search size={15} aria-hidden="true" />}
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
+          {!hasServers ? (
+            loading || error ? (
+              <ResourceStatus
+                loading={loading}
+                error={error}
+                onRetry={reload}
               />
-              <Select
-                aria-label="筛选服务器标签"
-                w={150}
-                data={tagOptions}
-                value={tag}
-                onChange={(value) => setTag(value ?? "")}
-              />
-              <Select
-                aria-label="筛选连接检测"
-                w={150}
-                data={connectionOptions}
-                value={connection}
-                onChange={(value) => setConnection(value ?? "")}
-              />
-              <Button variant="subtle" color="gray" onClick={clearFilters}>
-                重置筛选
-              </Button>
-            </Group>
-            <Text size="xs" c="dimmed" mt={8}>
-              共 {loading || error ? "—" : filtered.length} 台服务器
-            </Text>
-          </Card>
-          <Feedback message={error} />
-          <Paper withBorder radius="md" mb="md" aria-busy={loading}>
-            <Stack gap={0}>
-              {filtered.map((server, index) => (
-                <div key={server.alias}>
-                  <ServerRow
-                    server={server}
-                    check={checks[server.alias]}
-                    onOpen={() => {
-                      setDetails(server);
-                      setActionError("");
-                    }}
-                  />
-                  {index < filtered.length - 1 && (
-                    <div
-                      style={{
-                        borderTop:
-                          "1px solid var(--mantine-color-default-border)",
-                      }}
-                      aria-hidden="true"
-                    />
-                  )}
-                </div>
-              ))}
-            </Stack>
-            {!filtered.length && (
-              <Stack align="center" py="xl" gap="xs">
-                <Text fw={600}>
-                  {loading
-                    ? "正在读取…"
-                    : error
-                      ? "服务器加载失败"
-                      : hasFilters
-                        ? "没有匹配的服务器"
-                        : "还没有服务器"}
-                </Text>
-                {!loading && (
-                  <Button
-                    variant="default"
-                    onClick={
-                      error
-                        ? reload
-                        : hasFilters
-                          ? clearFilters
-                          : () => setEditor(null)
-                    }
-                  >
-                    {error ? "重试" : hasFilters ? "清除筛选" : "添加服务器"}
+            ) : (
+              <ServerEditor editing={null} onSaved={serverSaved} />
+            )
+          ) : (
+            <Card>
+              <Flex gap={12} align="center" style={{ marginBottom: 16 }}>
+                <Input
+                  allowClear
+                  aria-label="搜索服务器"
+                  placeholder="搜索名称、主机或标签…"
+                  prefix={<Search size={15} aria-hidden="true" />}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <Select
+                  aria-label="筛选服务器标签"
+                  style={{ width: 150 }}
+                  options={tagOptions}
+                  value={tag}
+                  onChange={setTag}
+                />
+                <Select
+                  aria-label="筛选连接检测"
+                  style={{ width: 150 }}
+                  options={connectionOptions}
+                  value={connection}
+                  onChange={setConnection}
+                />
+                {hasFilters && filtered.length > 0 && (
+                  <Button type="text" onClick={clearFilters}>
+                    重置筛选
                   </Button>
                 )}
-              </Stack>
-            )}
-          </Paper>
-          <Text size="xs" c="dimmed">
-            连接状态为本页手动检测结果，不代表持续健康监测。
-          </Text>
+                <Button
+                  type="text"
+                  aria-label="刷新服务器"
+                  loading={loading}
+                  icon={<RefreshCw size={15} aria-hidden="true" />}
+                  onClick={reload}
+                />
+                <Typography.Text
+                  type="secondary"
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  共 {loading || error ? "—" : filtered.length} 台
+                </Typography.Text>
+              </Flex>
+              <Feedback message={error} />
+              {error && <Button onClick={reload}>重试</Button>}
+              {!filtered.length && !loading && !error ? (
+                <ListNotice
+                  title="没有匹配的服务器"
+                  description="试试其他名称、环境或连接状态。"
+                  onClear={clearFilters}
+                />
+              ) : (
+                <Table<ServerEntry>
+                  className="server-list"
+                  aria-label="服务器列表"
+                  dataSource={filtered}
+                  columns={columns}
+                  rowKey="alias"
+                  pagination={false}
+                  loading={loading}
+                  tableLayout="fixed"
+                  scroll={{ x: 800 }}
+                  onRow={(server) => ({
+                    onClick: () => openDetails(server),
+                    style: { cursor: "pointer" },
+                  })}
+                />
+              )}
+            </Card>
+          )}
         </>
       )}
       {editor !== undefined && (
         <ServerEditor
           editing={editor}
           onClose={() => setEditor(undefined)}
-          onSaved={() => {
-            const alias = editor?.alias;
-            if (alias)
-              setChecks((old) => {
-                const next = { ...old };
-                delete next[alias];
-                return next;
-              });
-            setEditor(undefined);
-            setDetails(null);
-            reload();
-            setMessage("服务器配置已保存。");
-          }}
+          onSaved={serverSaved}
         />
       )}
       <AppModal
@@ -316,27 +354,29 @@ export default function Servers() {
         onClose={() => {
           if (!busy) setDeleting(null);
         }}
+        busy={!!busy}
         title="删除服务器配置"
-        description="此操作移除网关配置，不会删除远端主机。"
         footer={
-          <Group justify="flex-end" gap="sm">
-            <Button variant="default" onClick={() => setDeleting(null)} disabled={!!busy}>
+          <Space>
+            <Button onClick={() => setDeleting(null)} disabled={!!busy}>
               取消
             </Button>
             <Button
-              color="red"
+              danger
+              type="primary"
               onClick={() => void remove()}
               disabled={!!busy}
+              loading={busy === "delete"}
             >
-              {busy ? "正在删除…" : "删除配置"}
+              删除配置
             </Button>
-          </Group>
+          </Space>
         }
       >
-        <Text size="sm">
-          确认删除 <Text span fw={700}>{deleting?.alias}</Text>？后续 MCP
-          调用将无法再使用此别名。
-        </Text>
+        <Typography.Paragraph>
+          确认删除 <Typography.Text strong>{deleting?.alias}</Typography.Text>
+          ？后续 MCP 调用将无法再使用此别名。
+        </Typography.Paragraph>
         <Feedback message={actionError} />
       </AppModal>
     </>

@@ -22,7 +22,7 @@ class StoreTokenVerifier(TokenVerifier):
                 record = {
                     "tool": "authentication",
                     "status": "denied",
-                    "error": "MCP 凭证无效、已停用或已吊销",
+                    "error": "MCP 凭证无效、已停用或已删除",
                     "token_id": known["id"] if known else None,
                     "token_name": known["name"] if known else None,
                     "token_prefix": known["prefix"] if known else None,

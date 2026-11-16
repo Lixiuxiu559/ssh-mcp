@@ -1,0 +1,3 @@
+# Preserve the upstream font license byte-for-byte, including CRLF and spacing.
+webui/public/assets/fonts/OPPO-Sans-LICENSE.txt -text -whitespace
+src/ssh_mcp/web/static/assets/fonts/OPPO-Sans-LICENSE.txt -text -whitespace

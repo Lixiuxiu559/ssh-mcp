@@ -28,9 +28,9 @@
 |---|---|
 | 服务器管理 | 按别名维护主机、端口、账号、标签与凭据，网页修改后热生效。 |
 | 远程操作 | 7 个 MCP 工具覆盖命令执行、目录浏览、文本读取、文件传输与健康检查。 |
-| 独立凭证 | 网页用户名/密码登录，MCP token 单独创建、启停与吊销。 |
+| 独立凭证 | 网页用户名/密码登录，MCP token 单独创建、启用、禁用与删除。 |
 | 双审计 | 分别追踪人员配置操作与 token 对实际 SSH 目标的调用，默认保留 30 天。 |
-| 统一工作台 | 海盐奶蓝三色主题、浅色/深色/自动主题、命令面板与窄屏布局。 |
+| 统一工作台 | Ant Design v6 与 OPPO Sans，浅色/深色主题，面向桌面的资源与账号管理。 |
 
 <a id="deploy"></a>
 
@@ -153,7 +153,7 @@ docker compose exec ssh-mcp cat /data/data/setup.key
 
 - 网页使用用户名/密码、HttpOnly Cookie 会话与 CSRF 校验；所有启用人员同权。
 - MCP token 与人员账号独立：新 token 只展示一次明文，后续只显示元数据；仅用于 `/mcp`，不能登录网页。
-- 重启、升级或重建容器保留有效 token；创建新 token、停用创建者不会自动吊销旧 token。密码修改或人员停用会撤销该人员会话。
+- 重启、升级或重建容器保留有效 token；创建新 token、停用创建者不会自动删除其他 token。禁用后可重新启用；删除后立即失效并从管理列表移除，历史审计保留。密码修改或人员停用会撤销该人员会话。
 - 人员审计记录登录与配置变更；MCP 审计记录 token、实际主机/端口/远端账号及命令或路径、结果和耗时。默认保留 30 天，可筛选、查看详情与导出 CSV。
 - 审计不保存凭据或完整文件正文。命令可能包含业务数据，已识别凭据脱敏不能识别任意业务秘密。SQLite 审计不提供防篡改或跨系统事务保证。
 
@@ -263,7 +263,9 @@ wheel/sdist 包含默认配置和管理页面；也可 `uv tool install` 安装�
 
 ## 开发与项目
 
-新增或调整的管理页面统一采用 **Modern Professional（专业极简控制台）**，基于 Mantine 9 组件库与 lucide 图标实现，配色使用 Mantine 默认值（暗色为纯黑表面），保留浅色/深色模式。具体组件与主题约定见[开发约定](CLAUDE.md)。历史截图与已发布镜像不作为新页面的风格规范。
+新增或调整的管理页面统一采用 **Modern Professional（专业极简控制台）**，基于 Ant Design v6 原生组件与 OPPO Sans 4.0 字体实现，配色采用 Ant Design 默认浅深主题。字体文件和授权原文随服务本地交付。具体组件与主题约定见[开发约定](CLAUDE.md)。历史截图与已发布镜像不作为新页面的风格规范。
+
+本产品使用 OPPO Sans 4.0 字体。Copyright 2024 Guangdong OPPO Mobile Telecommunications Corp., Ltd. 字体授权原文见 [OPPO Sans Fonts License Agreement](webui/public/assets/fonts/OPPO-Sans-LICENSE.txt)。
 
 ```bash
 uv sync --locked

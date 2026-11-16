@@ -1,6 +1,6 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState } from "react";
 import {
-  Ban,
+  Trash2,
   Code2,
   Copy,
   KeyRound,
@@ -10,26 +10,38 @@ import {
   Search,
 } from "lucide-react";
 import {
-  ActionIcon,
+  Avatar,
   Button,
+  Row,
+  Col,
   Card,
-  Group,
-  SimpleGrid,
-  Stack,
+  Flex,
+  Form,
+  Input,
+  Space,
   Switch,
-  Text,
-  TextInput,
-  Textarea,
-  ThemeIcon,
-} from "@mantine/core";
+  Typography,
+  Tooltip,
+} from "antd";
 import { api, json } from "../api";
 import type { TokenEntry, User } from "../types";
 import { useResource } from "../lib/use-resource";
 import { errorText, formatTime, copyText } from "../lib/utils";
 import { DataTable, type TableColumn } from "../components/DataTable";
-import { Feedback, Status } from "../components/Feedback";
+import { Feedback } from "../components/Feedback";
+import {
+  ListNotice,
+  ResourceStatus,
+  SetupPanel,
+} from "../components/ListStates";
 import { PageHeading } from "../components/PageHeading";
 import { AppModal } from "../components/AppModal";
+
+const { Text } = Typography;
+interface TokenValues {
+  name: string;
+  description?: string;
+}
 
 function TokenEditor({
   item,
@@ -37,38 +49,112 @@ function TokenEditor({
   onSaved,
 }: {
   item: TokenEntry | null;
-  onClose: () => void;
+  onClose?: () => void;
   onSaved: (value?: { token: string; item: TokenEntry }) => void;
 }) {
-  const [name, setName] = useState(item?.name || "");
-  const [description, setDescription] = useState(item?.description || "");
-  const [enabled, setEnabled] = useState(item?.enabled ?? true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const formId = useId();
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit({ name, description = "" }: TokenValues) {
+    if (busy) return;
     setError("");
     setBusy(true);
     try {
       if (item) {
         await api(
           `/api/tokens/${encodeURIComponent(item.id)}`,
-          json("PATCH", { name, description, enabled }),
+          json("PATCH", { name, description }),
         );
         onSaved();
-      } else
+      } else {
         onSaved(
           await api<{ token: string; item: TokenEntry }>(
             "/api/tokens",
             json("POST", { name, description }),
           ),
         );
+      }
     } catch (error) {
       setError(errorText(error));
     } finally {
       setBusy(false);
     }
+  }
+  const fields = (
+    <Form<TokenValues>
+      id={formId}
+      layout="vertical"
+      disabled={busy}
+      onFinish={submit}
+      initialValues={{
+        name: item?.name || "",
+        description: item?.description || "",
+      }}
+    >
+      <Feedback message={error} />
+      <Form.Item
+        name="name"
+        label="Token 名称"
+        rules={[
+          { required: true, whitespace: true, message: "请输入 Token 名称" },
+          { max: 100 },
+        ]}
+      >
+        <Input
+          maxLength={100}
+          placeholder="例如 codex-dev 或 ci-runner"
+          autoComplete="off"
+        />
+      </Form.Item>
+      <Form.Item
+        name="description"
+        label="用途说明（可选）"
+        rules={[{ max: 500 }]}
+      >
+        <Input maxLength={500} placeholder="例如：持续集成部署" />
+      </Form.Item>
+      {!item && (
+        <Text type="secondary">
+          Token 明文只在创建后显示一次，请及时复制保存。
+        </Text>
+      )}
+    </Form>
+  );
+  const submitButton = (
+    <Button
+      type="primary"
+      htmlType="submit"
+      form={formId}
+      loading={busy}
+      icon={item ? undefined : <Plus size={15} aria-hidden="true" />}
+    >
+      {item ? "保存修改" : "创建 Token"}
+    </Button>
+  );
+  if (!onClose) {
+    return (
+      <SetupPanel icon={KeyRound} title="创建第一个 MCP Token">
+        <Row gutter={40}>
+          <Col span={12}>
+            <Typography.Title level={3} className="setup-section-title">
+              <KeyRound size={17} aria-hidden="true" />
+              凭证信息
+            </Typography.Title>
+            {fields}
+            <Flex style={{ marginTop: 24 }}>{submitButton}</Flex>
+          </Col>
+          <Col span={12}>
+            <Typography.Title level={3} className="setup-section-title">
+              <Code2 size={17} aria-hidden="true" />
+              客户端配置示例
+            </Typography.Title>
+            <pre className="setup-code">
+              <code>{configTemplate}</code>
+            </pre>
+          </Col>
+        </Row>
+      </SetupPanel>
+    );
   }
   return (
     <AppModal
@@ -76,62 +162,36 @@ function TokenEditor({
       onClose={() => {
         if (!busy) onClose();
       }}
-      title={item ? "编辑 MCP token" : "创建 MCP token"}
-      description="此凭证用于客户端调用 MCP，不用于网页登录。"
+      busy={busy}
+      title={item ? "编辑 MCP Token" : "创建 MCP Token"}
       footer={
-        <Group justify="flex-end" gap="sm">
-          <Button type="button" variant="default" onClick={onClose} disabled={busy}>
+        <Space>
+          <Button onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button type="submit" form={formId} disabled={busy}>
-            {busy ? "正在保存…" : item ? "保存修改" : "创建 token"}
-          </Button>
-        </Group>
+          {submitButton}
+        </Space>
       }
     >
-      <form id={formId} onSubmit={submit}>
-        <Stack gap="md">
-          <Feedback message={error} />
-          <TextInput
-            label="Token 名称"
-            value={name}
-            onChange={(event) => setName(event.currentTarget.value)}
-            required
-            maxLength={100}
-            placeholder="例如 codex-dev 或 ci-runner"
-          />
-          <TextInput
-            label="用途说明（可选）"
-            value={description}
-            onChange={(event) => setDescription(event.currentTarget.value)}
-            maxLength={500}
-            placeholder="记录凭证使用场景，便于后续追溯"
-          />
-          {item && (
-            <Switch
-              checked={enabled}
-              onChange={(event) => setEnabled(event.currentTarget.checked)}
-              label="启用此 token"
-            />
-          )}
-          <Text size="xs" c="dimmed">
-            {item
-              ? "停用将阻止后续 MCP 调用；启用后可继续使用原凭证。"
-              : "明文仅在创建完成后显示一次。新 token 不会使已有 token 失效。"}
-          </Text>
-        </Stack>
-      </form>
+      {fields}
     </AppModal>
   );
 }
 
-function connectionConfig(token: string) {
+const configTemplate = connectionConfig(
+  "<MCP_TOKEN>",
+  "https://ssh.example.com/mcp",
+);
+function connectionConfig(
+  token: string,
+  url = new URL("mcp", location.href).href,
+) {
   return JSON.stringify(
     {
       mcpServers: {
         ssh: {
           type: "http",
-          url: new URL("mcp", location.href).href,
+          url,
           headers: { Authorization: `Bearer ${token}` },
         },
       },
@@ -142,7 +202,7 @@ function connectionConfig(token: string) {
 }
 
 export default function Tokens() {
-  const { data, loading, error, reload } = useResource<{
+  const { data, setData, loading, error, reload } = useResource<{
     tokens: TokenEntry[];
   }>("/api/tokens", { tokens: [] });
   const { data: people } = useResource<{ users: User[] }>("/api/users", {
@@ -157,16 +217,32 @@ export default function Tokens() {
     item: TokenEntry;
   } | null>(null);
   const [configItem, setConfigItem] = useState<TokenEntry | null>(null);
-  const [revoking, setRevoking] = useState<TokenEntry | null>(null);
+  const [deleting, setDeleting] = useState<TokenEntry | null>(null);
   const [busy, setBusy] = useState(false);
+  const [updatingId, setUpdatingId] = useState("");
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
-  const filtered = data.tokens.filter((t) =>
-    `${t.name} ${t.description} ${t.id}`
+  const hasTokens = data.tokens.length > 0;
+  const activeCount = data.tokens.filter((token) => token.enabled).length;
+  const filtered = data.tokens.filter((token) =>
+    `${token.name} ${token.description} ${token.id}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
+  function tokenSaved(value?: { token: string; item: TokenEntry }) {
+    setEditor(undefined);
+    reload();
+    if (value) {
+      setQuery("");
+      setCreated(value);
+      setCopyMessage("");
+    } else setMessage("Token 已更新。");
+  }
+  function closeCreated() {
+    setCreated(null);
+    setCopyMessage("");
+  }
   async function copy(value: string) {
     try {
       await copyText(value);
@@ -175,22 +251,47 @@ export default function Tokens() {
       setCopyMessage(errorText(error));
     }
   }
-  async function revoke() {
-    if (!revoking) return;
+  async function remove() {
+    if (!deleting || loading || busy || updatingId) return;
     setBusy(true);
     setActionError("");
     try {
       await api(
-        `/api/tokens/${encodeURIComponent(revoking.id)}`,
+        `/api/tokens/${encodeURIComponent(deleting.id)}`,
         json("DELETE"),
       );
-      setRevoking(null);
-      reload();
-      setMessage("Token 已吊销，历史调用记录保留。");
+      setData((current) => ({
+        tokens: current.tokens.filter((token) => token.id !== deleting.id),
+      }));
+      setDeleting(null);
+      if (data.tokens.length === 1) setQuery("");
+      setMessage("Token 已删除，历史调用记录保留。");
     } catch (error) {
       setActionError(errorText(error));
     } finally {
       setBusy(false);
+    }
+  }
+  async function setEnabled(item: TokenEntry, enabled: boolean) {
+    if (loading || busy || updatingId) return;
+    setUpdatingId(item.id);
+    setActionError("");
+    setMessage("");
+    try {
+      const updated = await api<TokenEntry>(
+        `/api/tokens/${encodeURIComponent(item.id)}`,
+        json("PATCH", { enabled }),
+      );
+      setData((current) => ({
+        tokens: current.tokens.map((token) =>
+          token.id === updated.id ? updated : token,
+        ),
+      }));
+      setMessage(`Token 已${enabled ? "启用" : "禁用"}。`);
+    } catch (error) {
+      setActionError(errorText(error));
+    } finally {
+      setUpdatingId("");
     }
   }
   const columns: TableColumn<TokenEntry>[] = [
@@ -200,25 +301,29 @@ export default function Tokens() {
       sortable: true,
       value: (row) => row.name,
       render: (row) => (
-        <Group gap="sm" wrap="nowrap" title={row.description || undefined}>
-          <ThemeIcon variant="light" size="sm" radius="xl">
-            <KeyRound size={14} aria-hidden="true" />
-          </ThemeIcon>
-          <Stack gap={0}>
-            <Text size="sm" fw={600}>
+        <Flex gap={12} align="center" style={{ minWidth: 0 }}>
+          <Avatar
+            size={28}
+            style={{ flexShrink: 0 }}
+            icon={<KeyRound size={14} aria-hidden="true" />}
+          />
+          <Flex vertical style={{ minWidth: 0 }}>
+            <Text strong ellipsis title={row.name}>
               {row.name}
             </Text>
-            <Text size="xs" c="dimmed" visibleFrom="md">
-              {row.description || "未添加用途说明"}
-            </Text>
-          </Stack>
-        </Group>
+            {row.description && (
+              <Text type="secondary" ellipsis title={row.description}>
+                {row.description}
+              </Text>
+            )}
+          </Flex>
+        </Flex>
       ),
     },
     {
       id: "prefix",
+      width: 148,
       header: "凭证标识",
-      sortable: true,
       value: (row) => row.prefix,
       render: (row) => (
         <span title={row.id} className="mono nowrap">
@@ -228,330 +333,298 @@ export default function Tokens() {
     },
     {
       id: "state",
+      width: 100,
       header: "状态",
-      sortable: true,
-      value: (row) => (row.revoked ? 0 : row.enabled ? 2 : 1),
+      value: (row) => Number(row.enabled),
       render: (row) => (
-        <Status
-          value={
-            row.revoked
-              ? "revoked"
-              : row.enabled
-                ? "enabled"
-                : "disabled"
-          }
+        <Switch
+          checked={row.enabled}
+          checkedChildren="启用"
+          unCheckedChildren="禁用"
+          aria-label={`启用 ${row.name}`}
+          loading={updatingId === row.id}
+          disabled={loading || busy || !!updatingId}
+          onChange={(enabled) => void setEnabled(row, enabled)}
         />
       ),
     },
     {
       id: "last_used_at",
+      width: 160,
       header: "最近调用",
-      sortable: true,
       value: (row) => row.last_used_at ?? "",
       render: (row) => (
-        <span className="mono nowrap">{formatTime(row.last_used_at)}</span>
+        <span className="table-time">{formatTime(row.last_used_at)}</span>
       ),
     },
     {
       id: "created_by",
+      width: 100,
       header: "创建人",
-      sortable: true,
       value: (row) => row.created_by ?? "",
       render: (row) => (
-        <Text size="sm" title={row.created_by || undefined}>
-          {people.users.find((user) => user.id === row.created_by)
-            ?.username ||
+        <Text title={row.created_by || undefined}>
+          {people.users.find((user) => user.id === row.created_by)?.username ||
             (row.created_by ? row.created_by.slice(0, 12) : "历史迁移")}
         </Text>
       ),
     },
     {
       id: "created_at",
+      width: 160,
       header: "创建时间",
-      sortable: true,
       value: (row) => row.created_at ?? "",
       render: (row) => (
-        <span className="mono nowrap">{formatTime(row.created_at)}</span>
+        <span className="table-time">{formatTime(row.created_at)}</span>
       ),
     },
     {
       id: "actions",
+      width: 144,
+      fixed: "right",
       header: "操作",
       render: (row) => (
-        <Group gap="xs" wrap="nowrap">
+        <Space size={4}>
           <Button
-            variant="subtle"
-            size="compact-sm"
+            type="text"
+            size="small"
+            aria-label={`查看 ${row.name} 接入配置`}
+            icon={<Code2 size={14} aria-hidden="true" />}
             onClick={() => {
               setConfigItem(row);
               setCopyMessage("");
             }}
-            aria-label={`查看 ${row.name} 接入配置`}
-            leftSection={<Code2 size={14} aria-hidden="true" />}
           >
             接入
           </Button>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            aria-label={`编辑 ${row.name}`}
-            disabled={row.revoked}
-            onClick={() => setEditor(row)}
-          >
-            <Pencil size={15} aria-hidden="true" />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            aria-label={`吊销 ${row.name}`}
-            disabled={row.revoked}
-            onClick={() => {
-              setRevoking(row);
-              setActionError("");
-            }}
-          >
-            <Ban size={15} aria-hidden="true" />
-          </ActionIcon>
-        </Group>
+          <Tooltip title="编辑 Token">
+            <Button
+              type="text"
+              size="small"
+              aria-label={`编辑 ${row.name}`}
+              icon={<Pencil size={15} aria-hidden="true" />}
+              disabled={loading || busy || !!updatingId}
+              onClick={() => setEditor(row)}
+            />
+          </Tooltip>
+          <Tooltip title="删除 Token">
+            <Button
+              type="text"
+              size="small"
+              danger
+              aria-label={`删除 ${row.name}`}
+              icon={<Trash2 size={15} aria-hidden="true" />}
+              disabled={loading || busy || !!updatingId}
+              onClick={() => {
+                setDeleting(row);
+                setActionError("");
+              }}
+            />
+          </Tooltip>
+        </Space>
       ),
     },
   ];
   return (
     <>
       <PageHeading
-        eyebrow="SERVICE CREDENTIALS"
         title="MCP Token"
-        description="独立管理客户端凭证，每一次 MCP 调用按 token 留下操作痕迹。"
         extra={
-          <Button
-            onClick={() => setEditor(null)}
-            leftSection={<Plus size={15} aria-hidden="true" />}
-          >
-            创建 token
-          </Button>
+          hasTokens && (
+            <Button
+              type="primary"
+              icon={<Plus size={15} aria-hidden="true" />}
+              disabled={loading || busy || !!updatingId}
+              onClick={() => setEditor(null)}
+            >
+              创建 Token
+            </Button>
+          )
         }
       />
-      <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md" mb="md">
-        <Card withBorder p="md" radius="md">
-          <Text size="xs" c="dimmed" fw={600}>
-            有效凭证
-          </Text>
-          <Text fz={22} fw={700} lh={1.2} mt={4}>
-            {data.tokens.filter((t) => t.enabled && !t.revoked).length}
-            <Text span size="xs" c="dimmed" fw={400} ml={6}>
-              个 token
-            </Text>
-          </Text>
-        </Card>
-        <Card withBorder p="md" radius="md">
-          <Text size="xs" c="dimmed" fw={600}>
-            已停用或吊销
-          </Text>
-          <Text fz={22} fw={700} lh={1.2} mt={4}>
-            {data.tokens.filter((t) => !t.enabled || t.revoked).length}
-            <Text span size="xs" c="dimmed" fw={400} ml={6}>
-              个 token
-            </Text>
-          </Text>
-        </Card>
-        <Card withBorder p="md" radius="md">
-          <Text size="xs" c="dimmed" fw={600}>
-            凭证生命周期
-          </Text>
-          <Text fz={22} fw={700} lh={1.2} mt={4}>
-            独立管理
-            <Text span size="xs" c="dimmed" fw={400} ml={6}>
-              升级保留
-            </Text>
-          </Text>
-        </Card>
-      </SimpleGrid>
       <Feedback message={actionError} onDismiss={() => setActionError("")} />
       <Feedback message={message} success onDismiss={() => setMessage("")} />
-      <Card withBorder p="md" radius="md">
-        <Group justify="space-between" mb="sm" wrap="nowrap" gap="sm">
-          <TextInput
-            w={260}
-            aria-label="搜索 token"
-            placeholder="搜索名称、用途或标识…"
-            leftSection={<Search size={15} aria-hidden="true" />}
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
-          <Button
-            variant="subtle"
-            color="gray"
-            onClick={reload}
-            disabled={loading}
-            leftSection={<RefreshCw size={14} aria-hidden="true" />}
+      {!hasTokens ? (
+        loading || error ? (
+          <ResourceStatus loading={loading} error={error} onRetry={reload} />
+        ) : (
+          <TokenEditor item={null} onSaved={tokenSaved} />
+        )
+      ) : (
+        <Card>
+          <Flex
+            justify="space-between"
+            align="center"
+            gap={12}
+            style={{ marginBottom: 16 }}
           >
-            刷新
-          </Button>
-        </Group>
-        <DataTable
-          columns={columns}
-          data={filtered}
-          rowKey={(row) => row.id}
-          loading={loading}
-          error={error}
-          onRetry={reload}
-          empty={query ? "没有匹配的 token" : "还没有 token"}
-          emptyAction={
-            query ? (
-              <Button variant="default" size="xs" onClick={() => setQuery("")}>
-                清除搜索
-              </Button>
-            ) : (
+            <Input
+              style={{ width: 280 }}
+              aria-label="搜索 Token"
+              placeholder="搜索名称、用途或标识…"
+              prefix={<Search size={15} aria-hidden="true" />}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              allowClear
+            />
+            <Space size="middle">
+              <Text type="secondary">
+                启用 {activeCount} · 禁用 {data.tokens.length - activeCount}
+              </Text>
               <Button
-                variant="default"
-                size="xs"
-                onClick={() => setEditor(null)}
-                leftSection={<Plus size={14} aria-hidden="true" />}
+                type="text"
+                icon={<RefreshCw size={14} aria-hidden="true" />}
+                disabled={loading || busy || !!updatingId}
+                onClick={reload}
               >
-                创建 token
+                刷新
               </Button>
-            )
-          }
-        />
-        <Text size="xs" c="dimmed" mt="sm">
-          人员账号与服务 token
-          独立。创建者只用于管理追溯，不能代表凭证的实际使用者。
-        </Text>
-      </Card>
+            </Space>
+          </Flex>
+          {!filtered.length && !loading && !error ? (
+            <ListNotice
+              title="没有匹配的 Token"
+              description="试试其他名称、用途或凭证标识。"
+              onClear={() => setQuery("")}
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              fixedLayout
+              minWidth={1040}
+              data={filtered}
+              rowKey={(row) => row.id}
+              loading={loading}
+              error={error}
+              onRetry={reload}
+            />
+          )}
+        </Card>
+      )}
       {editor !== undefined && (
         <TokenEditor
           item={editor}
           onClose={() => setEditor(undefined)}
-          onSaved={(value) => {
-            setEditor(undefined);
-            reload();
-            if (value) {
-              setCreated(value);
-              setCopyMessage("");
-            } else setMessage("Token 已更新。");
-          }}
+          onSaved={tokenSaved}
         />
       )}
       <AppModal
         opened={!!created}
-        onClose={() => {
-          setCreated(null);
-          setCopyMessage("");
-        }}
-        title="保存你的 MCP token"
+        onClose={closeCreated}
+        title="保存你的 MCP Token"
         description="明文仅显示这一次，关闭后无法再次读取。"
         size="lg"
         footer={
-          <Group justify="flex-end">
-            <Button
-              onClick={() => {
-                setCreated(null);
-                setCopyMessage("");
-              }}
-            >
-              已保存，关闭
-            </Button>
-          </Group>
+          <Button type="primary" onClick={closeCreated}>
+            已保存，关闭
+          </Button>
         }
       >
         {created && (
-          <Stack gap="md">
-            <Textarea
-              label={created.item.name}
-              className="mono secret-display"
-              readOnly
-              value={created.token}
-              rows={3}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <div>
+          <Flex vertical gap={16}>
+            <Form layout="vertical">
+              <Form.Item label={created.item.name}>
+                <Input.TextArea
+                  className="mono secret-display"
+                  readOnly
+                  value={created.token}
+                  rows={3}
+                  onFocus={(event) => event.target.select()}
+                />
+              </Form.Item>
               <Button
-                variant="default"
+                icon={<Copy size={15} aria-hidden="true" />}
                 onClick={() => void copy(created.token)}
-                leftSection={<Copy size={15} aria-hidden="true" />}
               >
-                复制 token
+                复制 Token
               </Button>
-            </div>
-            <Textarea
-              label="客户端接入配置"
-              className="mono"
-              readOnly
-              rows={10}
-              value={connectionConfig(created.token)}
-              spellCheck={false}
-            />
-            <Group gap="sm">
+              <Form.Item
+                label="客户端接入配置"
+                style={{ marginTop: 20, marginBottom: 0 }}
+              >
+                <Input.TextArea
+                  className="mono"
+                  readOnly
+                  rows={10}
+                  value={connectionConfig(created.token)}
+                  spellCheck={false}
+                />
+              </Form.Item>
+            </Form>
+            <Space>
               <Button
-                variant="default"
+                icon={<Copy size={15} aria-hidden="true" />}
                 onClick={() => void copy(connectionConfig(created.token))}
-                leftSection={<Copy size={15} aria-hidden="true" />}
               >
                 复制配置
               </Button>
-              <Text size="sm" c="dimmed" role="status">
+              <Text type="secondary" role="status">
                 {copyMessage}
               </Text>
-            </Group>
-          </Stack>
+            </Space>
+          </Flex>
         )}
       </AppModal>
       <AppModal
         opened={!!configItem}
         onClose={() => setConfigItem(null)}
-        title="MCP 客户端接入"
-        description="将配置中的占位内容替换为该 token 的真实明文。"
+        title={`接入配置 · ${configItem?.name ?? ""}`}
+        description="将示例 URL 和 <MCP_TOKEN> 替换为网关地址和已保存的 Token。"
         size="lg"
         footer={
-          <Group justify="space-between" w="100%" wrap="nowrap">
+          <Flex justify="space-between" align="center" gap={16}>
             <Button
-              variant="default"
-              onClick={() => void copy(connectionConfig("<MCP_TOKEN>"))}
-              leftSection={<Copy size={15} aria-hidden="true" />}
+              icon={<Copy size={15} aria-hidden="true" />}
+              onClick={() => void copy(configTemplate)}
             >
               复制配置模板
             </Button>
-            <Text size="sm" c="dimmed" role="status">
+            <Text type="secondary" role="status">
               {copyMessage}
             </Text>
-          </Group>
+          </Flex>
         }
       >
-        <Stack gap="md">
-          <Textarea
-            label="HTTP 接入配置"
-            className="mono"
-            rows={10}
-            readOnly
-            value={connectionConfig("<MCP_TOKEN>")}
-            spellCheck={false}
-          />
-          <Text size="xs" c="dimmed">
-            凭证标识：{configItem?.id}。服务不再返回已创建 token
-            的明文；若丢失，请创建新 token。
-          </Text>
-        </Stack>
+        <Form layout="vertical">
+          <Form.Item label="HTTP 配置示例" style={{ marginBottom: 0 }}>
+            <Input.TextArea
+              className="mono"
+              rows={10}
+              readOnly
+              value={configTemplate}
+              spellCheck={false}
+            />
+          </Form.Item>
+        </Form>
       </AppModal>
       <AppModal
-        opened={!!revoking}
-        onClose={() => setRevoking(null)}
-        title="吊销 MCP token"
-        description="吊销不可恢复。如需暂时停用，可在编辑中关闭启用开关。"
+        opened={!!deleting}
+        onClose={() => {
+          if (!busy) setDeleting(null);
+        }}
+        busy={busy}
+        title="删除 MCP Token"
+        description="删除后凭证立即失效，历史调用记录会保留。"
         footer={
-          <Group justify="flex-end" gap="sm">
-            <Button variant="default" disabled={busy} onClick={() => setRevoking(null)}>
+          <Space>
+            <Button disabled={busy} onClick={() => setDeleting(null)}>
               取消
             </Button>
-            <Button color="red" disabled={busy} onClick={() => void revoke()}>
-              {busy ? "正在吊销…" : "确认吊销"}
+            <Button
+              danger
+              type="primary"
+              loading={busy}
+              onClick={() => void remove()}
+            >
+              确认删除
             </Button>
-          </Group>
+          </Space>
         }
       >
-        <Text size="sm">
-          确认吊销 <Text span fw={700}>{revoking?.name}</Text>
-          ？使用此凭证的后续调用将被拒绝。
-        </Text>
+        <Typography.Paragraph>
+          确认删除 <Text strong>{deleting?.name}</Text>
+          ？删除后无法恢复。
+        </Typography.Paragraph>
         <Feedback message={actionError} onDismiss={() => setActionError("")} />
       </AppModal>
     </>

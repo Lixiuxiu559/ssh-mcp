@@ -23,5 +23,5 @@ export function useResource<T>(path: string, initial: T) {
       });
     return () => controller.abort();
   }, [path, revision]);
-  return { data, loading, error, reload };
+  return { data, setData, loading, error, reload };
 }

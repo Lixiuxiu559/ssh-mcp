@@ -326,11 +326,14 @@ class IdentityStore:
                     )
                 conn.execute("INSERT INTO metadata VALUES('legacy_migrated','1')")
 
-    def list_tokens(self) -> list[dict[str, Any]]:
+    def list_tokens(self, *, include_deleted: bool = True) -> list[dict[str, Any]]:
         with self._lock:
             return [
                 self._token(r)
-                for r in self._connection().execute("SELECT * FROM tokens ORDER BY created_at")
+                for r in self._connection().execute(
+                    "SELECT * FROM tokens WHERE (? OR revoked=0) ORDER BY created_at",
+                    (include_deleted,),
+                )
             ]
 
     def create_token(
@@ -397,11 +400,12 @@ class IdentityStore:
         with self._lock:
             conn = self._connection()
             with conn:
+                conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute("SELECT * FROM tokens WHERE id=?", (token_id,)).fetchone()
                 if row is None:
                     raise IdentityError("Token 不存在")
                 if row["revoked"]:
-                    raise IdentityError("已吊销的 Token 不能重新启用或修改")
+                    raise IdentityError("Token 已删除，不能重新启用或修改")
                 name, description = (
                     changes.get("name", row["name"]),
                     changes.get("description", row["description"]),
@@ -424,10 +428,15 @@ class IdentityStore:
         with self._lock:
             conn = self._connection()
             with conn:
+                conn.execute("BEGIN IMMEDIATE")
                 if conn.execute("SELECT 1 FROM tokens WHERE id=?", (token_id,)).fetchone() is None:
                     raise IdentityError("Token 不存在")
                 conn.execute("UPDATE tokens SET enabled=0,revoked=1 WHERE id=?", (token_id,))
-                self._event(conn, event)
+                self._event(conn, event, object_id=token_id)
+
+    def delete_token(self, token_id: str, event: dict[str, Any] | None = None) -> None:
+        """保留验证值墓碑，防止删除后的凭据被旧配置再次导入。"""
+        self.revoke_token(token_id, event)
 
     def pending_events(self) -> list[tuple[int, dict[str, Any]]]:
         with self._lock:

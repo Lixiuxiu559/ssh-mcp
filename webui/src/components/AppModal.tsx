@@ -1,79 +1,54 @@
-import { Box, Modal, Stack, Text } from "@mantine/core";
-import type { MantineSize } from "@mantine/core";
+import { Flex, Modal, Typography } from "antd";
 import type { ReactNode } from "react";
 
-/**
- * 统一弹窗骨架：标题固定，内容区上下滚动，底部操作栏固定在弹窗底部。
- * 表单弹窗请把提交按钮放进 footer，并用 Button 的 form 属性关联表单 id。
- */
+const widths = { xs: 360, sm: 440, md: 540, lg: 720, xl: 900 };
+
 export function AppModal({
   opened,
   onClose,
   title,
   description,
-  size,
+  size = "md",
   children,
   footer,
+  busy = false,
 }: {
   opened: boolean;
   onClose: () => void;
   title: string;
   description?: string;
-  size?: MantineSize | number;
+  size?: keyof typeof widths | number;
   children: ReactNode;
   footer?: ReactNode;
+  busy?: boolean;
 }) {
   return (
     <Modal
-      opened={opened}
-      onClose={onClose}
+      open={opened}
+      onCancel={onClose}
       title={title}
-      size={size}
+      width={typeof size === "number" ? size : widths[size]}
+      footer={footer ?? null}
+      centered
+      destroyOnHidden
+      closable={!busy}
+      keyboard={!busy}
+      mask={{ closable: !busy }}
+      focusable={{ trap: true, focusTriggerAfterClose: true }}
       styles={{
-        content: {
-          display: "flex",
-          flexDirection: "column",
-          maxHeight: "calc(100dvh - 6rem)",
-        },
         body: {
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          minHeight: 0,
-          overflow: "hidden",
-          padding: 0,
+          maxHeight: "calc(100dvh - 220px)",
+          overflowY: "auto",
+          paddingBlock: 16,
         },
       }}
     >
-      <Box
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: "auto",
-          padding: "var(--mantine-spacing-md) var(--mantine-spacing-md) 0",
-        }}
-      >
-        <Stack gap="md" pb="md">
-          {description && (
-            <Text size="sm" c="dimmed">
-              {description}
-            </Text>
-          )}
-          {children}
-        </Stack>
-      </Box>
-      {footer && (
-        <Box
-          px="md"
-          py="md"
-          style={{
-            borderTop: "1px solid var(--mantine-color-default-border)",
-            flexShrink: 0,
-          }}
-        >
-          {footer}
-        </Box>
-      )}
+      <Flex vertical gap={16}>
+        {description && (
+          <Typography.Text type="secondary">{description}</Typography.Text>
+        )}
+        {children}
+      </Flex>
     </Modal>
   );
 }

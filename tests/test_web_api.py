@@ -156,11 +156,49 @@ async def test_token_management_and_old_token_independence(logged, gw):
     ).status_code == 200
     assert (await logged.delete(f"/api/tokens/{item['id']}")).status_code == 200
     assert await gw.mcp.auth.verify_token(value) is None
+    assert item["id"] not in {row["id"] for row in (await logged.get("/api/tokens")).json()["tokens"]}
     assert (
         await logged.patch(f"/api/tokens/{item['id']}", json={"enabled": True})
     ).status_code == 400
     user_session = logged.cookies.get("ssh_mcp_session")
     assert await gw.mcp.auth.verify_token(user_session) is None
+
+
+async def test_token_delete_is_idempotent_and_preserves_audit_history(logged, gw):
+    created = await logged.post("/api/tokens", json={"name": "delete-me"})
+    value, item = created.json()["token"], created.json()["item"]
+    await gw.state.audit.log(
+        {"token_id": item["id"], "token_name": item["name"], "tool": "run_command",
+         "command": "uptime", "server": "web-1", "status": "ok"}
+    )
+    path = f"/api/tokens/{item['id']}"
+    denied = await logged.delete(path, headers={"X-CSRF-Token": "wrong"})
+    assert denied.status_code == 403
+    assert gw.state.identity.verify_token(value) is not None
+    assert (await logged.delete(path)).json() == {"ok": True}
+    assert (await logged.delete(path)).status_code == 200
+    assert item["id"] not in {row["id"] for row in (await logged.get("/api/tokens")).json()["tokens"]}
+    updated = await logged.patch(path, json={"enabled": True, "name": "resurrected"})
+    assert updated.status_code == 400 and "已删除" in updated.json()["detail"]
+    assert gw.state.identity.verify_token(value) is None
+    history = await logged.get("/api/audit", params={"kind": "mcp", "token_id": item["id"], "q": "uptime"})
+    assert history.json()["total"] == 1
+    assert history.json()["records"][0]["token_name"] == "delete-me"
+    people = await logged.get("/api/audit", params={"kind": "person", "q": "token.delete"})
+    deleted = [row for row in people.json()["records"] if row["status"] == "ok"]
+    assert len(deleted) == 2
+    assert all(row["object_id"] == item["id"] and row["username"] == "alice" for row in deleted)
+    assert all(row["summary"] == "删除 MCP Token" for row in deleted)
+    assert value not in history.text and value not in people.text
+    assert gw.state.identity.pending_events() == []
+
+
+async def test_management_token_list_hides_previously_revoked_tokens(logged, gw):
+    item = gw.state.identity.verify_token("tok-bob")
+    gw.state.identity.revoke_token(item["id"])
+    listed = (await logged.get("/api/tokens")).json()["tokens"]
+    assert listed and all(not row["revoked"] for row in listed)
+    assert item["id"] not in {row["id"] for row in listed}
 
 
 async def test_person_audit_attribution_and_no_secrets(logged):
@@ -195,8 +233,8 @@ async def test_bad_json_and_secret_errors_are_readable(logged):
     assert response.status_code == 400 and "sensitive-value" not in response.text
 
 
-async def test_established_http_mcp_session_rejects_revoked_token(gw):
-    """真实 HTTP 中间件：已初始化的会话不能凭旧 token 绕过吊销。"""
+async def test_established_http_mcp_session_rejects_deleted_token(gw):
+    """真实 HTTP 中间件：已初始化的会话不能凭旧 token 绕过删除。"""
     app = gw.mcp.http_app(json_response=True, stateless_http=False)
     headers = {
         "Authorization": "Bearer tok-alice",
@@ -234,7 +272,7 @@ async def test_established_http_mcp_session_rejects_revoked_token(gw):
         listed = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         assert listed.status_code == 200, listed.text
         item = gw.state.identity.verify_token("tok-alice")
-        gw.state.identity.revoke_token(item["id"])
+        gw.state.identity.delete_token(item["id"])
         denied = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
         assert denied.status_code == 401, denied.text
 

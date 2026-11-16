@@ -102,9 +102,56 @@ def test_new_old_tokens_parallel_and_revocation_is_final(tmp_path):
     store.update_token(first["id"], {"enabled": True, "name": "renamed"})
     assert store.verify_token(old)["id"] == first["id"]
     store.revoke_token(first["id"])
-    with pytest.raises(IdentityError, match="吊销"):
+    with pytest.raises(IdentityError, match="不能重新启用"):
         store.update_token(first["id"], {"enabled": True})
     assert store.verify_token(new)["id"] == second["id"]
+
+
+def test_delete_token_hides_metadata_and_cannot_be_reimported(tmp_path):
+    store, user = setup_store(tmp_path)
+    value, item = store.create_token("machine", user["id"])
+    retained, other = store.create_token("other", user["id"])
+    event = {"event_id": "delete-1", "action": "token.delete", "actor_user_id": user["id"]}
+    store.delete_token(item["id"], event)
+    assert store.verify_token(value) is None
+    assert store.list_tokens(include_deleted=False) == [other]
+    assert store.token_for_audit(value)["id"] == item["id"]
+    assert store.pending_events()[0][1]["object_id"] == item["id"]
+    store.delete_token(item["id"])
+    with pytest.raises(IdentityError, match="已删除"):
+        store.update_token(item["id"], {"enabled": True})
+    store.close()
+
+    reopened = IdentityStore(store.path)
+    reopened.migrate_legacy([UserEntry(username="old-config", token=value)])
+    assert reopened.verify_token(value) is None
+    assert reopened.verify_token(retained)["id"] == other["id"]
+    assert [row["id"] for row in reopened.list_tokens(include_deleted=False)] == [other["id"]]
+    assert len(reopened.list_tokens()) == 2
+    assert reopened.token_info(item["id"])["revoked"] is True
+    reopened.close()
+
+
+def test_delete_token_rolls_back_if_audit_outbox_fails(tmp_path, monkeypatch):
+    store, user = setup_store(tmp_path)
+    value, item = store.create_token("machine", user["id"])
+    original = store._event
+
+    def fail(conn, record, **kwargs):
+        original(conn, record, **kwargs)
+        raise sqlite3.OperationalError("disk full")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(store, "_event", fail)
+        with pytest.raises(sqlite3.OperationalError):
+            store.delete_token(item["id"], {"event_id": "failed-delete", "action": "token.delete"})
+    assert store.verify_token(value)["id"] == item["id"]
+    assert store.list_tokens(include_deleted=False)[0]["id"] == item["id"]
+    assert store.pending_events() == []
+    store.delete_token(item["id"], {"event_id": "retry-delete", "action": "token.delete"})
+    assert store.verify_token(value) is None
+    assert len(store.pending_events()) == 1
+    store.close()
 
 
 def test_identity_mutation_and_audit_outbox_are_atomic(tmp_path, monkeypatch):

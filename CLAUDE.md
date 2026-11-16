@@ -20,7 +20,7 @@ audit.py           人员事件、MCP调用开始/结束、重试尝试、legacy
 web/api.py         人员Cookie会话与CSRF管理API，不能接受MCP token登录
 ssh/pool.py        asyncssh缓存、并发限制、连接级故障重试一次与尝试审计
 tools/             SSH清单、健康、命令、文件操作；register(mcp)
-webui/             React / Mantine 9 / lucide 图标 / Modern Professional组件
+webui/             React / Ant Design v6 / OPPO Sans / lucide 图标
 web/static/        随源码、wheel、sdist和镜像交付的前端构建产物
 ```
 
@@ -28,8 +28,8 @@ web/static/        随源码、wheel、sdist和镜像交付的前端构建产物
 
 - 所有启用人员同权，不增加admin角色或隐藏权限。网页登录只用密码与会话，MCP只用独立token。
 - 不开放默认账号。首次用户需要本机setup.key；密码不由旧token派生。
-- 实际旧token仅首次幂等迁移；常规更新与重启不失效，吊销后不能通过重启或再次导入复活。
-- 人员停用/改密码撤销网页会话；停用创建者不级联吊销token。新token一次展示明文，列表和日志不泄露secret。
+- 实际旧token仅首次幂等迁移；常规更新与重启不失效，删除后不能通过重启或再次导入复活。
+- 人员停用/改密码撤销网页会话；停用创建者不级联删除token。新token一次展示明文，列表和日志不泄露secret。
 - 人员/token变更与身份审计outbox同事务，跨库投递按稳定event_id幂等，失败可重试。
 - 审计在外部调用前记running，完成后记真实结果；取消与异常不能标成功；异常退出未完成记unknown。
 - 保存执行时目标主机/端口/账号和token名称快照；历史记录不能随资源改名漂移。
@@ -49,12 +49,15 @@ web/static/        随源码、wheel、sdist和镜像交付的前端构建产物
 
 ## 前端
 
-本服务前端基于 **Mantine 9 组件库** 实现 Modern Professional（专业极简控制台）；界面组件优先使用 Mantine（AppShell、Table、Modal、Tabs、Pagination、Select、FileButton 等），图标统一 lucide-react，通过 Mantine 的 leftSection/rightSection/icon 传入。
-不引入其他 UI 库；禁止恢复 Tailwind、Base UI、TanStack Table、Ant Design、玻璃拟态或混合旧主题。
-配色使用 Mantine 默认值：主色为默认 `blue`，暗色为默认近黑表面，不做品牌色定制；仅暗色文字色阶在 `src/theme.ts` 提亮（dark[0] 纯白、[1]/[2] 依次减弱），保证黑底可读性。字体为系统字体栈；圆角与字号等非颜色项同文件覆盖。
-主题仅 light/dark 两态（默认 light），由 MantineProvider 管理，localStorage 键 `mantine-color-scheme-value`；`index.html` 内联引导脚本负责首帧防闪烁，并把旧 `linkage-theme` 偏好做一次性迁移；根节点 `data-mantine-color-scheme` 输出实际主题。
-Mantine 之外的全局样式集中在 `src/global.css`，仅放少量辅助类（mono、排序按钮重置、审计详情网格等）。
-表格排序由 `components/DataTable.tsx` 内置轻量实现，不引入表格库。前后端契约变更必须同步 types 与 API 测试。
+本服务前端基于 **Ant Design v6**，字体使用 **OPPO Sans 4.0**。优先使用组件库的 Layout、Menu、Form、Input、Upload、Table、Modal、Tabs、Descriptions、Empty、Statistic 等原生组件。公共业务组件仅封装已有行为，不实现另一套组件库皮肤。
+配色采用 Ant Design 默认蓝色与默认浅深算法，由 ConfigProvider 的 design token 管理，CSS 使用 --ant-* 语义变量；布局样式集中于 src/global.css。
+OPPO Sans 官方原始可变 TTF 和授权原文保存在 webui/public/assets/fonts/，随构建产物交付，禁止修改或子集化字体；README 提供字体声明与授权原文入口。
+账号菜单仅展示当前用户身份、个人资料、修改密码与退出登录，不提供快速前往、GitHub 或关于；个人资料与密码复用现有用户管理 API，改密成功后回到登录页。GitHub 仓库入口放在侧栏左下角和登录首页页脚，以新标签页打开项目源码。主题只保留顶栏切换入口，菜单内不重复放主题控件。
+主题保留 light/dark，默认 light。localStorage 键为 ssh-mcp-theme，首次读取兼容旧 mantine-color-scheme-value 和 linkage-theme；index.html 负责首帧主题，根节点 data-theme 输出实际主题。
+表格排序使用 Ant Design Table，分页按页面数据源采用前端或后端分页；前后端契约变更同步 types 与 API 测试。
+页面面向桌面浏览器，内容突出操作和数据，避免装饰性英文眉题和重复解释文字。登录前首页保留用户确认的双栏设计、原有展示文案、连接示意和登录卡片比例；技术迁移不得擅自重排该页面。首次服务器与 Token 配置采用两栏工作区，区块通过间距和底色组织，避免交叉分隔线。PEM 上传位于网关私钥路径输入框右侧。
+Token 管理只展示启用/禁用与删除。列表开关直接保存状态；删除后从管理列表移除并立即失效，保留身份库中的失效标记和历史审计，旧已吊销项按已删除处理。
+Token 配置预览和模板使用 https://ssh.example.com/mcp 示例地址；新 Token 创建后的实际接入配置使用当前网关地址。一次性秘密值提示、错误反馈和危险操作确认必须保留。
 总览使用现有管理API展示真实统计与最近事件，不模拟在线状态或趋势。
 服务器连接结果来自本页手动检测，不代表持续健康监测；详情用独立内容页展示配置路径。
 API使用相对路径和人员Cookie，写请求带X-CSRF-Token；不要将MCP token放入localStorage。
@@ -72,7 +75,7 @@ npm run build
 ```
 
 改UI后必须重建web/static再打包，不在Docker里临时跑npm。测试设施为FakeSSH与FastMCP Client、HTTPX ASGI，
-关键认证还验证真实HTTP握手、会话与token吊销。测试运行数据必须用临时目录，不加载真实config.yaml。
+关键认证还验证真实HTTP握手、会话与token删除。测试运行数据必须用临时目录，不加载真实config.yaml。
 
 ## 构建与部署
 

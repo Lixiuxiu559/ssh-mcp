@@ -28,9 +28,9 @@ A self-hosted SSH gateway for individuals and teams. Manage Linux hosts and cred
 |---|---|
 | Host management | Maintain aliases, endpoints, accounts, tags, and credentials; web changes apply without a restart. |
 | Remote operations | 7 MCP tools for commands, directories, text files, transfers, and host health. |
-| Separate credentials | Username/password web access and independently managed MCP tokens. |
+| Separate credentials | Username/password web access and independently created, enabled, disabled, and deleted MCP tokens. |
 | Two audit trails | Track management actions and token calls against actual SSH targets; 30-day retention by default. |
-| Unified workspace | A fixed sea-salt blue three-color palette, light/dark/system themes, command palette, and responsive layouts. |
+| Unified workspace | Ant Design v6 and OPPO Sans, light/dark themes, and desktop resource and account management. |
 
 <a id="deploy"></a>
 
@@ -153,7 +153,7 @@ Defaults: 2 MiB uploads, 10 MiB downloads, 1 MiB text reads, and 64 KiB each for
 
 - Web access uses username/password, HttpOnly session cookies, and CSRF protection. All enabled users have equal management access.
 - MCP tokens are separate from users. A new token is shown in plaintext only once; subsequent views expose metadata only. Tokens authorize `/mcp`, not web login.
-- Restarts, upgrades, and container replacement preserve valid tokens. Creating a token or disabling its creator does not revoke other tokens. Password changes and user disabling revoke that user's web sessions.
+- Restarts, upgrades, and container replacement preserve valid tokens. Creating a token or disabling its creator does not delete other tokens. Disabled tokens can be enabled again. Deleted tokens are invalidated immediately and removed from management lists while historical audit records remain available. Password changes and user disabling revoke that user's web sessions.
 - Management audit records logins and configuration changes. MCP audit records token identity, actual host/port/remote account and command or path, outcome, and duration. Retention defaults to 30 days, with filters, details, and CSV export.
 - Audit excludes credentials and complete file contents. Commands may contain business data; redaction of recognized credentials cannot detect every business secret. Local SQLite audit is neither tamper-proof nor a cross-system transaction guarantee.
 
@@ -263,7 +263,9 @@ wheel/sdist includes default configuration and web assets. Local wheels can also
 
 ## Development and project
 
-Use **Modern Professional** for all new or updated console pages. The service uses a fixed sea-salt blue three-color palette with light/dark/system modes. The [development guide](CLAUDE.md) defines colors, system fonts, layout, controls, and migration status. Historical screenshots and released images do not define the current design specification.
+Use **Modern Professional** for all new or updated console pages, implemented with native Ant Design v6 components and OPPO Sans 4.0, using Ant Design's default light/dark themes. Font files and the original license are bundled with the service. The [development guide](CLAUDE.md) defines component and theme conventions. Historical screenshots and released images do not define the current design specification.
+
+This product uses OPPO Sans 4.0. Copyright 2024 Guangdong OPPO Mobile Telecommunications Corp., Ltd. See the [OPPO Sans Fonts License Agreement](webui/public/assets/fonts/OPPO-Sans-LICENSE.txt).
 
 ```bash
 uv sync --locked

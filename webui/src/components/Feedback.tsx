@@ -1,5 +1,4 @@
-import { Alert, Badge } from "@mantine/core";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { Alert, Tag } from "antd";
 
 export function Feedback({
   message,
@@ -13,21 +12,14 @@ export function Feedback({
   if (!message) return null;
   return (
     <Alert
-      color={success ? "green" : "red"}
-      variant="light"
-      icon={
-        success ? (
-          <CheckCircle2 size={17} aria-hidden="true" />
-        ) : (
-          <AlertCircle size={17} aria-hidden="true" />
-        )
-      }
-      withCloseButton={!!onDismiss}
-      onClose={onDismiss}
+      type={success ? "success" : "error"}
+      title={message}
+      showIcon
+      closable={!!onDismiss}
+      afterClose={onDismiss}
       role={success ? "status" : "alert"}
-    >
-      {message}
-    </Alert>
+      style={{ marginBottom: 16 }}
+    />
   );
 }
 
@@ -45,28 +37,24 @@ const statusLabels: Record<string, string> = {
   revoked: "已吊销",
   denied: "已拒绝",
   legacy: "历史记录",
+  unchecked: "尚未检测",
 };
-
 const statusColors: Record<string, string> = {
-  ok: "green",
-  enabled: "green",
-  error: "red",
-  timeout: "red",
-  denied: "red",
-  revoked: "red",
-  started: "yellow",
-  running: "yellow",
-  pending: "yellow",
-  unknown: "yellow",
-  disabled: "gray",
-  cancelled: "gray",
-  legacy: "gray",
+  ok: "success",
+  enabled: "success",
+  error: "error",
+  timeout: "error",
+  denied: "error",
+  revoked: "error",
+  started: "processing",
+  running: "processing",
+  pending: "warning",
+  unknown: "warning",
 };
-
 export function Status({ value, label }: { value: string; label?: string }) {
   return (
-    <Badge variant="light" color={statusColors[value] ?? "gray"}>
+    <Tag color={statusColors[value]}>
       {label || statusLabels[value] || value}
-    </Badge>
+    </Tag>
   );
 }
