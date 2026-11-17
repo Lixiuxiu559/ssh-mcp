@@ -9,6 +9,7 @@ runtime/
 *.db
 *.db-*
 *.pem
+*.token.key
 .env
 known_hosts
 

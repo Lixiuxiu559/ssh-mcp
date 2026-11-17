@@ -1,15 +1,17 @@
 name: ssh-mcp
 services:
   ssh-mcp:
-    image: ${SSHMCP_IMAGE:-lijx559/ssh-mcp:0.2.0}
+    container_name: ${COMPOSE_PROJECT_NAME:-ssh-mcp}
+    image: ${SSHMCP_IMAGE:-lijx559/ssh-mcp:0.3.0}
     restart: unless-stopped
-    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     ports:
       - "${SSHMCP_BIND_ADDRESS:-127.0.0.1}:${SSHMCP_PORT:-8808}:8808"
     volumes:
-      - ./runtime:/data
-    env_file:
-      - .env
+      - runtime:/data
     environment:
       TZ: ${TZ:-Asia/Shanghai}
     stop_grace_period: 20s
+
+volumes:
+  runtime:
+    name: ${COMPOSE_PROJECT_NAME:-ssh-mcp}-data

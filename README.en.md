@@ -58,137 +58,65 @@ A self-hosted SSH gateway for individuals and teams. Configure Linux hosts once,
 
 <a id="quickstart"></a>
 
-## Quick start
+## Quick deployment with Docker
 
-Requires Python 3.10+ and uv. Built web assets are committed, so starting the service does not require Node.js.
-
-```bash
-git clone --branch master https://github.com/Lixiuxiu559/ssh-mcp.git
-cd ssh-mcp
-uv sync --locked
-uv run --locked ssh-mcp --init --config ./runtime/config.yaml
-uv run --locked ssh-mcp --config ./runtime/config.yaml
-```
-
-CLI options include `--host`, `--port`, `--config`, and `--data-dir`. The latter resolves against the working directory and overrides data paths without moving existing data.
-
-Open **http://127.0.0.1:8808/** and complete the following steps:
-
-1. Sign in with **`admin / admin`** and change the password from the account menu if desired. Ordinary password creation, changes, and resets require **6–1024 characters**; the installation default is the only exception.
-2. Create a project in Workspaces.
-3. Add resources in Servers and assign one or more workspaces. Store private keys and known_hosts in runtime/keys/ and use keys/... relative paths in configuration.
-4. Create a client credential in MCP Token, selecting exactly one workspace. Leave expiry empty for no expiry.
-5. Copy the Token from the list or open its connection settings, select Claude Code / Codex, and use the client to discover accessible resources.
-
-The default account is created only when the identity database has no users. Existing users prevent creation or resets. Routine restarts and upgrades preserve users, workspaces, valid Tokens, and expiry settings. Unassigned resources are inaccessible to MCP clients.
-
-### Build Docker from source
-
-Run in the source directory above. This uses a separate local image name; `runtime/` holds all persistent data:
+Requires Docker Engine or Docker Desktop. Pull the image and start it; Git, Python, Node.js, an `.env` file, and a pre-created configuration are not required. Choose either `docker run` or Compose below.
 
 ```bash
-mkdir -p runtime
-umask 077
-cat > .env <<EOF
-COMPOSE_PROJECT_NAME=ssh-mcp
-DOCKER_UID=$(id -u)
-DOCKER_GID=$(id -g)
-SSHMCP_IMAGE=ssh-mcp:local
-SSHMCP_BIND_ADDRESS=127.0.0.1
-SSHMCP_PORT=8808
-TZ=Asia/Shanghai
-EOF
-docker compose -f docker-compose.yml -f docker-compose.build.yml build
-docker compose -f docker-compose.yml -f docker-compose.build.yml run --rm ssh-mcp ssh-mcp --init --config /data/config.yaml
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
-curl -fsS http://127.0.0.1:8808/healthz
+docker pull lijx559/ssh-mcp:0.3.0
+docker run -d --name ssh-mcp \
+  --restart unless-stopped \
+  -p 127.0.0.1:8808:8808 \
+  -v ssh-mcp-data:/data \
+  lijx559/ssh-mcp:0.3.0
 ```
 
-`--init` never overwrites an existing configuration; skip it for an existing runtime directory. Stop a source process before starting a container on the same port. When deploying as root, set a dedicated non-root UID/GID in `.env` and give it read/write ownership of `runtime/`.
+Open **http://127.0.0.1:8808/** and sign in with **`admin / admin`** on a new installation. The image creates a default configuration if missing and creates the default account only when the identity database has no users. Existing accounts, passwords, workspaces, Tokens, and audit data are preserved.
+
+Docker creates the named volume automatically. It stores configuration, identities, the Token encryption key, and audit data under `/data`, surviving container replacement. When upgrading an existing deployment, retain its original volume or bind mount, UID/GID, and environment settings; update only the image to avoid switching to an empty volume.
 
 <a id="deploy"></a>
 
-## Docker Compose: versioned images
+## Use Docker Compose
 
-This no-checkout option uses the pinned `0.2.0` image. Its features and account setup follow the corresponding [release record](docs/releases/2026-10-30-dockerhub.md). The source build above includes the functionality shown in this README.
-
-Requires Docker Engine (or Docker Desktop) and Docker Compose v2. No source checkout is needed; the image includes the complete web console. The deployment host must be able to reach your SSH hosts.
-
-### 1. Prepare a deployment directory
-
-The following commands target a regular Linux/macOS user. `.env` persists the image, port, and runtime UID/GID for future restarts.
-
-```bash
-mkdir -p ssh-mcp/runtime
-cd ssh-mcp
-umask 077
-cat > .env <<EOF
-COMPOSE_PROJECT_NAME=ssh-mcp
-DOCKER_UID=$(id -u)
-DOCKER_GID=$(id -g)
-SSHMCP_IMAGE=lijx559/ssh-mcp:0.2.0
-SSHMCP_BIND_ADDRESS=127.0.0.1
-SSHMCP_PORT=8808
-TZ=Asia/Shanghai
-EOF
-```
-
-For deployment as root, set `DOCKER_UID` / `DOCKER_GID` in `.env` to a dedicated non-root account and give that account ownership of `runtime/`, for example `chown -R 1000:1000 runtime`. The image defaults to UID/GID `1000:1000`.
-
-### 2. Save `docker-compose.yml`
+Save this single `compose.yaml` file:
 
 ```yaml
 name: ssh-mcp
 services:
   ssh-mcp:
-    image: ${SSHMCP_IMAGE:-lijx559/ssh-mcp:0.2.0}
+    image: lijx559/ssh-mcp:0.3.0
+    container_name: ssh-mcp
     restart: unless-stopped
-    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     ports:
-      - "${SSHMCP_BIND_ADDRESS:-127.0.0.1}:${SSHMCP_PORT:-8808}:8808"
+      - "127.0.0.1:8808:8808"
     volumes:
-      - ./runtime:/data
-    env_file:
-      - .env
-    environment:
-      TZ: ${TZ:-Asia/Shanghai}
+      - runtime:/data
     stop_grace_period: 20s
+volumes:
+  runtime:
+    name: ssh-mcp-data
 ```
-
-Versioned tags and `latest` support **`linux/amd64` / `linux/arm64`**, selected automatically by Docker. Prefer a fixed version for deployments. You can also download [docker-compose.yml](docker-compose.yml) and [.env.example](.env.example) from this repository.
-
-### 3. Initialize and start
 
 ```bash
 docker compose pull
-docker compose run --rm ssh-mcp ssh-mcp --init --config /data/config.yaml
 docker compose up -d
 docker compose ps
-curl -fsS http://127.0.0.1:8808/healthz
 ```
 
-Run `--init` only for the first deployment: it creates an empty configuration and never overwrites an existing file. Skip initialization when upgrading. Once health returns `{"ok":true}`, open **http://127.0.0.1:8808/**.
+Both methods use the same named volume and default container name. Stop and remove the previous container before switching methods, retaining the volume. Do not run two service instances against the same identity database.
 
-### 4. Complete setup for that image version
+### Sign in and connect resources
 
-Follow the first-account setup instructions in the pinned image's console and startup logs, then configure resources and create a client-specific MCP Token. Source-built installations start with `admin / admin` when the identity database has no users.
+1. Sign in with `admin / admin` and change the password from the account menu if desired. Ordinary passwords require 6–1024 characters.
+2. Create a project in Workspaces.
+3. Add resources in Servers and assign one or more workspaces.
+4. Create an MCP Token for that workspace; leave expiry empty for no expiry.
+5. Copy the Token from the list or open its connection settings for Claude Code / Codex configuration.
 
-### Compose configuration
+The published host port is local-only by default. For direct LAN access, replace `127.0.0.1` in the port mapping with `0.0.0.0` and use `http://SERVER_IP:8808/`. Use HTTPS reverse proxying for public access. Inside the container, `127.0.0.1` refers to the container itself; use a container-reachable address for resources.
 
-| Setting | Default | Purpose |
-|---|---|---|
-| `COMPOSE_PROJECT_NAME` | `ssh-mcp` | Use distinct project names, host ports, and runtime directories for multiple deployments. |
-| `SSHMCP_IMAGE` | `lijx559/ssh-mcp:0.2.0` | Pinned image; change explicitly when upgrading. |
-| `SSHMCP_BIND_ADDRESS` | `127.0.0.1` | Local access only; use `0.0.0.0` when direct LAN access is required. |
-| `SSHMCP_PORT` | `8808` | Host port; the container continues to use `8808`. |
-| `DOCKER_UID` / `DOCKER_GID` | `1000` / `1000` | Must have read/write access to `runtime/`. |
-| `./runtime:/data` | Directory mount | Persists configuration, identities, tokens, and audit; mount the whole directory. |
-| `env_file: .env` | `.env` | Supplies resource credentials to the container and values for Compose interpolation. |
-| `TZ` | `Asia/Shanghai` | Container timezone; audit timestamps are stored in UTC. |
-
-See [config.example.yaml](config.example.yaml). The live configuration is `runtime/config.yaml`; relative configuration paths resolve against its parent directory. `${VARIABLE}` reads the **container environment** and fails if missing. Add resource credentials to `.env`; web passwords and MCP tokens belong in their respective console pages. Web edits preserve environment references but discard YAML comments.
-
-Inside a container, `127.0.0.1` refers to that container. For resources on the host, Docker Desktop supports `host.docker.internal`; Linux deployments can add `extra_hosts: ["host.docker.internal:host-gateway"]` when appropriate. Use a container-reachable address for remote resources.
+The image runs as UID/GID `1000:1000`; named volumes need no manual directory ownership setup. For a custom host bind mount, grant the container user read/write access. Resource credentials can be entered in the console. If using `${VARIABLE}` references, supply them through Compose `environment` / optional `env_file` or `docker run -e`.
 
 <a id="connect"></a>
 
@@ -246,90 +174,65 @@ Defaults: 2 MiB uploads, 10 MiB downloads, 1 MiB text reads, and 64 KiB each for
 
 ## Operations and upgrades
 
-### Persistent data
+The default persistent volume is **`ssh-mcp-data`**, mounted at `/data`:
 
-| Host path | Contents |
+| Container path | Contents |
 |---|---|
-| `runtime/config.yaml` | Service and resource configuration. |
-| `runtime/data/service.token.key` | Persistent encryption key for token copying; back up and restore with the identity database. |
-| `runtime/data/service.db` | Users, sessions, workspaces, token assignments, verification hashes, and encrypted copies. |
-| `runtime/audit/audit.db` | Management and MCP audit records. |
-| `runtime/keys/` | Uploaded private keys, known_hosts, and other SSH files. |
-
-Keep these files, `.env`, and `backups/` out of Git. Preserve the entire `runtime/` directory across upgrades and container replacement.
+| `/data/config.yaml` | Service and resource configuration. |
+| `/data/data/service.db` | Users, sessions, workspaces, Tokens, and encrypted copies. |
+| `/data/data/service.token.key` | Token encryption key; back up and restore with the identity database. |
+| `/data/audit/audit.db` | Management and MCP call audit. |
+| `/data/keys/` | SSH keys, known_hosts, and related files. |
 
 ```bash
-docker compose logs -f --tail=100
-docker compose restart
-docker compose down
+docker logs -f --tail=100 ssh-mcp
+docker restart ssh-mcp
+curl -fsS http://127.0.0.1:8808/healthz
 ```
 
-`down` removes containers without deleting the host `runtime/` directory. Stopping the service interrupts active calls.
+For Compose, use `docker compose logs -f --tail=100`, `docker compose restart`, and `docker compose stop`. `docker compose down` retains named volumes; `down -v` deletes the data and is not an upgrade command.
 
-### Back up and update
+### Backup and update
 
-Stop the service before backing up the full directory, including SQLite WAL/SHM files and `data/service.token.key`, or use a reliable SQLite online backup procedure and preserve the matching encryption key. A missing or damaged key blocks copying and new token issuance without changing existing hash authentication. On restoration, the service tightens key-file permissions to `0600`; preserve a regular file and correct ownership.
+Stop the container and copy its entire data directory to the host, including SQLite files and the Token key:
 
 ```bash
-mkdir -p backups
-docker compose stop
-(umask 077; tar -czf "backups/runtime-$(date +%Y%m%d-%H%M%S).tar.gz" runtime .env docker-compose.yml)
-docker compose start
+umask 077
+docker stop ssh-mcp
+docker cp ssh-mcp:/data "./backup-ssh-mcp-$(date +%Y%m%d-%H%M%S)"
+docker start ssh-mcp
 ```
 
-For a source-built image, update the source and repeat the earlier `build` and `up -d` steps, preserving `.env` and `runtime/`. The pull commands below apply to published images.
-
-Set `SSHMCP_IMAGE` in `.env` to the new published version, then run:
+To update with Compose, set `image` in `compose.yaml` to the new version, then run:
 
 ```bash
 docker compose pull
 docker compose up -d
-docker compose ps
 ```
 
-Workspace access is designed for a fresh deployment. After initialization, create workspaces, assign resources, and issue tokens in the console. Legacy `auth.users` credentials are not imported automatically, and tokens without a workspace cannot call MCP. Routine restarts and upgrades preserve workspaces and valid credentials. Historical audit attribution is retained. Backups and rollback still require matching configuration and data.
+For `docker run`, pull the new version, stop and remove the old container, and run again with the original ports and **the same data volume**. Upgrades and rollback retain matching configuration, identity database, key, and audit data. Legacy `auth.users` credentials are not imported automatically, and Tokens without a workspace are not granted access.
 
-### HTTPS and reverse proxy
+### Source and Python packages
 
-The default host binding is local, suitable for an HTTPS reverse proxy. Example subpath configuration:
+Use source for development or custom builds; ordinary Docker deployment does not require these commands.
 
-```nginx
-location /ssh-mcp/ {
-    proxy_pass http://127.0.0.1:8808/;
-    proxy_http_version 1.1;
-    proxy_buffering off;
-    proxy_read_timeout 600s;
-}
+```bash
+git clone --branch master https://github.com/Lixiuxiu559/ssh-mcp.git
+cd ssh-mcp
+uv sync --locked
+uv run --locked ssh-mcp --init --config ./runtime/config.yaml
+uv run --locked ssh-mcp --config ./runtime/config.yaml
 ```
 
-Set `auth.cookie_secure: true` and `auth.cookie_path: /ssh-mcp/` in `runtime/config.yaml`, restart, and use `https://mcp.example.com/ssh-mcp/` with MCP at `.../ssh-mcp/mcp`. The trailing slash in `proxy_pass` strips the prefix. Assets and API calls use relative URLs.
-
-### Troubleshooting
-
-| Symptom | Action |
-|---|---|
-| Configuration or SQLite is not writable | Match `.env` UID/GID to the owner of `runtime/`; keep the whole directory writable. |
-| Remote browsers cannot open the console | Default binding is local; use HTTPS proxying, an SSH tunnel, or an explicit network binding. |
-| Web login works but MCP authentication fails | Web accounts and MCP tokens are separate; create a token in the MCP Token page. |
-| Resources are unreachable from the container | Check networking, target addresses, and firewalls; avoid accidentally targeting the container's own loopback. |
-| How to sign in after installation | Source-built installations use `admin / admin` if no users exist. Existing users retain their credentials; pinned images follow their version-specific setup instructions. |
-
-## Other installation options
-
-Source, Docker, and Python packages share the full HTTP MCP service and console. The following builds a local package from the current source.
-
-<details>
-<summary>Python package / uvx</summary>
+The CLI supports `--config`, `--host`, `--port`, and `--data-dir`. Containers additionally use `--init-if-missing`, preserving existing configuration. Standalone `--init` creates configuration and exits. Configuration paths resolve against its parent directory; `--data-dir` resolves against the working directory and does not move existing data.
 
 ```bash
 uv build
-uvx --from ./dist/ssh_mcp-0.2.0-py3-none-any.whl ssh-mcp --init --config /absolute/path/ssh-mcp/config.yaml
-uvx --from ./dist/ssh_mcp-0.2.0-py3-none-any.whl ssh-mcp --config /absolute/path/ssh-mcp/config.yaml
+uvx --from ./dist/ssh_mcp-0.3.0-py3-none-any.whl ssh-mcp --init --config /absolute/path/ssh-mcp/config.yaml
+uvx --from ./dist/ssh_mcp-0.3.0-py3-none-any.whl ssh-mcp --config /absolute/path/ssh-mcp/config.yaml
 ```
 
-wheel/sdist includes default configuration and web assets. Local wheels can also be installed with `uv tool install`. Only Docker images are currently published; this does not claim a PyPI package or GitHub Release exists. uvx does not use the source `uv.lock`; prefer a pinned image or source lockfile for production reproducibility. Keep runtime data outside installation caches.
-
-</details>
+Local wheels/sdists include default configuration and console assets. Keep runtime data outside installation caches. uvx does not use the source `uv.lock`; package availability follows the release records.
 
 <a id="development"></a>
 
@@ -351,6 +254,7 @@ npm run build
 Rebuild static assets after changing the frontend. To build a container from source, run from the repository root:
 
 ```bash
+export SSHMCP_IMAGE=ssh-mcp:local
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 

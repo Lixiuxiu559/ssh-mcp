@@ -1,6 +1,6 @@
 [project]
 name = "ssh-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "团队共享 SSH 网关 MCP 服务：集中管理服务器凭据，agent 只说机器名即可操作"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -24,7 +24,12 @@ def main() -> None:
         default=os.environ.get("SSHMCP_CONFIG", "config.yaml"),
         help="配置文件路径（默认 ./config.yaml，可用 SSHMCP_CONFIG 覆盖）",
     )
-    parser.add_argument("--init", action="store_true", help="创建最小配置后退出（不覆盖已有文件）")
+    initialization = parser.add_mutually_exclusive_group()
+    initialization.add_argument("--init", action="store_true", help="创建最小配置后退出（不覆盖已有文件）")
+    initialization.add_argument(
+        "--init-if-missing", action="store_true",
+        help="缺少配置时创建默认配置并继续启动（容器默认启用）",
+    )
     parser.add_argument("--data-dir", type=Path, help="覆盖身份与审计的持久化运行目录")
     parser.add_argument("--host", help="覆盖监听地址，本地默认 127.0.0.1")
     parser.add_argument("--port", type=int, help="覆盖监听端口")
@@ -32,21 +37,25 @@ def main() -> None:
 
     load_dotenv()
     path = Path(args.config).expanduser().resolve()
-    if args.init:
+    if args.init or args.init_if_missing:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("x", encoding="utf-8") as output:
                 os.chmod(path, 0o600)
                 output.write(files("ssh_mcp").joinpath("default_config.yaml").read_text("utf-8"))
         except FileExistsError:
-            message = "配置已存在，未覆盖" if path.exists() else "无法创建配置，请检查父路径和目录权限"
-            print(f"{message}: {path}", file=sys.stderr)
-            raise SystemExit(1) from None
+            if args.init or not path.is_file():
+                message = "配置已存在，未覆盖" if path.exists() else "无法创建配置，请检查父路径和目录权限"
+                print(f"{message}: {path}", file=sys.stderr)
+                raise SystemExit(1) from None
         except OSError:
             print(f"无法创建配置，请检查目录权限和磁盘空间: {path}", file=sys.stderr)
             raise SystemExit(1) from None
-        print(f"已创建配置: {path}\n启动命令: ssh-mcp --config {path}")
-        return
+        else:
+            print(f"已创建配置: {path}")
+        if args.init:
+            print(f"启动命令: ssh-mcp --config {path}")
+            return
     try:
         cfg_file = ConfigFile(path)
         if args.data_dir:

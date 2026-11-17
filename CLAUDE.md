@@ -1,4 +1,4 @@
-# ssh-mcp 开发指引（0.2.0）
+# ssh-mcp 开发指引（0.3.0）
 
 本服务是独立 Python FastMCP 仓库。本地前端采用 Ant Design 6 控制台规范，提供用户名密码登录、独立 MCP token 与双审计。
 工作空间的统一规范适用于新改动；本文件列出服务内部边界与可直接使用的命令。
@@ -97,9 +97,9 @@ FastMCP精确固定4.1.4；升级显式修改依赖和uv.lock并回归，不在�
 ```bash
 uv build
 # 包测试在源码目录外进行
-uvx --from ./dist/ssh_mcp-0.2.0-py3-none-any.whl ssh-mcp --version
+uvx --from ./dist/ssh_mcp-0.3.0-py3-none-any.whl ssh-mcp --version
 # 本地镜像，架构按实际目标明确指定
-docker buildx build --platform linux/amd64 -t ssh-mcp:0.2.0 --load .
+docker buildx build --platform linux/amd64 -t ssh-mcp:0.3.0 --load .
 ```
 
 发布前检查产物内有default_config.yaml与完整web/static；检查原始配置、密钥、data/audit/runtime和node_modules没有混入。
