@@ -4,7 +4,7 @@
 
 **把服务器连接、AI 工具调用与操作追溯放在一个工作台。**
 
-[![Docker Hub](https://img.shields.io/badge/Docker_Hub-published_0.2.0-146ED0?logo=docker&logoColor=white)](https://hub.docker.com/r/lijx559/ssh-mcp)
+[![Docker Hub](https://img.shields.io/badge/Docker_Hub-images-146ED0?logo=docker&logoColor=white)](https://hub.docker.com/r/lijx559/ssh-mcp)
 [![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-4B5FC4)](docs/releases/2026-10-30-dockerhub.md)
 [![FastMCP](https://img.shields.io/badge/FastMCP-4.1.4-17242B)](https://gofastmcp.com)
 
@@ -15,8 +15,6 @@
 </div>
 
 面向个人与团队的自托管 SSH 网关。把 Linux 服务器集中配置一次，按工作空间向 Claude Code、Codex 等 MCP 客户端开放命令、文件和主机检查能力，并追踪人员操作与客户端调用。
-
-> 本文功能与截图对应当前 **`dev` 分支**。首次启动默认账号为 **`admin / admin`**。Docker Hub 的 `0.2.0` 是既有发布版本；本次工作空间、Token 与界面改动需从 `dev` 源码运行或自行构建，尚未发布为新镜像。
 
 ![SSH MCP 总览：资源、有效 Token、调用与人员事件](docs/images/workspace.png)
 
@@ -60,12 +58,12 @@
 
 <a id="quickstart"></a>
 
-## 快速开始：当前 dev 源码
+## 快速开始
 
 需要 Python 3.10+ 和 uv。仓库已包含管理页面构建产物，启动服务无需 Node.js。
 
 ```bash
-git clone --branch dev https://github.com/Lixiuxiu559/ssh-mcp.git
+git clone --branch master https://github.com/Lixiuxiu559/ssh-mcp.git
 cd ssh-mcp
 uv sync --locked
 uv run --locked ssh-mcp --init --config ./runtime/config.yaml
@@ -84,7 +82,7 @@ CLI 支持 `--host`、`--port`、`--config` 与 `--data-dir`。`--data-dir` 相�
 
 首次启动只在身份库没有任何用户时创建默认账号。已有用户时不补建、不重置；常规重启与升级保留账号、工作空间、有效 Token 和设置的期限。未归属工作空间的资源不向 MCP 客户端开放。
 
-### 用当前源码构建 Docker
+### 用源码构建 Docker
 
 在上面的源码目录中执行。以下使用独立的本地镜像名，`runtime/` 保存全部运行数据：
 
@@ -95,7 +93,7 @@ cat > .env <<EOF
 COMPOSE_PROJECT_NAME=ssh-mcp
 DOCKER_UID=$(id -u)
 DOCKER_GID=$(id -g)
-SSHMCP_IMAGE=ssh-mcp:dev
+SSHMCP_IMAGE=ssh-mcp:local
 SSHMCP_BIND_ADDRESS=127.0.0.1
 SSHMCP_PORT=8808
 TZ=Asia/Shanghai
@@ -110,9 +108,9 @@ curl -fsS http://127.0.0.1:8808/healthz
 
 <a id="deploy"></a>
 
-## Docker Compose 部署：既有发布镜像
+## Docker Compose 部署：版本化镜像
 
-以下无需克隆源码，使用既有 `0.2.0` 镜像。该版本的界面、账号初始化与 Token 能力以[发布记录](docs/releases/2026-10-30-dockerhub.md)和实际镜像为准；体验本文当前功能请使用上面的 `dev` 源码或源码构建镜像。
+以下无需克隆源码，使用固定 `0.2.0` 镜像。镜像功能与账号初始化方式见对应的[发布记录](docs/releases/2026-10-30-dockerhub.md)；上面的源码构建方式包含本文展示的功能。
 
 需要 Docker Engine（或 Docker Desktop）与 Docker Compose v2。无需克隆源码，镜像已包含完整管理页面。部署机器需要能访问目标 SSH 服务器。
 
@@ -173,7 +171,7 @@ curl -fsS http://127.0.0.1:8808/healthz
 
 ### 4. 完成镜像对应的账号初始化
 
-按该固定版本管理页和启动日志的提示完成首次账号设置。本文前面的 `admin / admin` 安装默认规则对应当前 `dev` 实现，不代表既有镜像已更新。随后在后台配置资源并创建客户端专用 MCP Token。
+按该固定版本管理页和启动日志的提示完成首次账号设置，再在后台配置资源并创建客户端专用 MCP Token。源码构建版本首次启动、身份库没有用户时，使用 `admin / admin` 登录。
 
 ### Compose 配置说明
 
@@ -279,7 +277,7 @@ docker compose stop
 docker compose start
 ```
 
-使用源码构建的 `dev` 镜像时，更新源码后重新执行前面的 `build` 与 `up -d`，保留原 `.env` 和 `runtime/`。下面的拉取命令适用于已发布镜像。
+使用源码构建的镜像时，更新源码后重新执行前面的 `build` 与 `up -d`，保留原 `.env` 和 `runtime/`。下面的拉取命令适用于已发布镜像。
 
 修改 `.env` 中的 `SSHMCP_IMAGE` 为已发布的新版本后执行：
 
@@ -314,7 +312,7 @@ location /ssh-mcp/ {
 | 远程浏览器无法打开页面 | 默认仅本机监听；使用 HTTPS 反代、SSH 隧道，或显式修改绑定地址。 |
 | 网页登录后 MCP 仍认证失败 | 网页账号与 MCP token 分开管理，在 MCP Token 页面创建专用凭证。 |
 | 容器连不上资源 | 检查容器网络、目标地址与防火墙，避免误用容器自己的 `127.0.0.1`。 |
-| 首次安装如何登录 | 当前 dev 首次启动无用户时使用 `admin / admin`；已有用户使用原凭据，旧镜像按其初始化提示操作。 |
+| 首次安装如何登录 | 源码构建版本首次启动无用户时使用 `admin / admin`；已有用户使用原凭据，固定镜像按对应版本的初始化提示操作。 |
 
 ## 其他启动方式
 

@@ -4,7 +4,7 @@
 
 **One workspace for SSH connections, AI tool calls, and operation history.**
 
-[![Docker Hub](https://img.shields.io/badge/Docker_Hub-published_0.2.0-146ED0?logo=docker&logoColor=white)](https://hub.docker.com/r/lijx559/ssh-mcp)
+[![Docker Hub](https://img.shields.io/badge/Docker_Hub-images-146ED0?logo=docker&logoColor=white)](https://hub.docker.com/r/lijx559/ssh-mcp)
 [![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-4B5FC4)](docs/releases/2026-10-30-dockerhub.md)
 [![FastMCP](https://img.shields.io/badge/FastMCP-4.1.4-17242B)](https://gofastmcp.com)
 
@@ -15,8 +15,6 @@
 </div>
 
 A self-hosted SSH gateway for individuals and teams. Configure Linux hosts once, grant Claude Code, Codex, and other MCP clients access by workspace, and trace both management actions and remote commands, file operations, and host checks.
-
-> This README and its screenshots describe the current **`dev` branch**. A new installation starts with **`admin / admin`**. Docker Hub tag `0.2.0` is an earlier release; run or build the `dev` source for the workspace, Token, and UI changes shown here. These changes have not been released as a new image.
 
 ![SSH MCP overview: resources, usable tokens, calls, and management events](docs/images/workspace.png)
 
@@ -60,12 +58,12 @@ A self-hosted SSH gateway for individuals and teams. Configure Linux hosts once,
 
 <a id="quickstart"></a>
 
-## Quick start: current dev source
+## Quick start
 
 Requires Python 3.10+ and uv. Built web assets are committed, so starting the service does not require Node.js.
 
 ```bash
-git clone --branch dev https://github.com/Lixiuxiu559/ssh-mcp.git
+git clone --branch master https://github.com/Lixiuxiu559/ssh-mcp.git
 cd ssh-mcp
 uv sync --locked
 uv run --locked ssh-mcp --init --config ./runtime/config.yaml
@@ -84,7 +82,7 @@ Open **http://127.0.0.1:8808/** and complete the following steps:
 
 The default account is created only when the identity database has no users. Existing users prevent creation or resets. Routine restarts and upgrades preserve users, workspaces, valid Tokens, and expiry settings. Unassigned resources are inaccessible to MCP clients.
 
-### Build Docker from the current source
+### Build Docker from source
 
 Run in the source directory above. This uses a separate local image name; `runtime/` holds all persistent data:
 
@@ -95,7 +93,7 @@ cat > .env <<EOF
 COMPOSE_PROJECT_NAME=ssh-mcp
 DOCKER_UID=$(id -u)
 DOCKER_GID=$(id -g)
-SSHMCP_IMAGE=ssh-mcp:dev
+SSHMCP_IMAGE=ssh-mcp:local
 SSHMCP_BIND_ADDRESS=127.0.0.1
 SSHMCP_PORT=8808
 TZ=Asia/Shanghai
@@ -110,9 +108,9 @@ curl -fsS http://127.0.0.1:8808/healthz
 
 <a id="deploy"></a>
 
-## Docker Compose: existing published image
+## Docker Compose: versioned images
 
-This no-checkout option uses the existing `0.2.0` image. Its UI, account setup, and Token behavior follow its [release record](docs/releases/2026-10-30-dockerhub.md) and the image itself. Use the `dev` source or source-built image above for the current functionality shown here.
+This no-checkout option uses the pinned `0.2.0` image. Its features and account setup follow the corresponding [release record](docs/releases/2026-10-30-dockerhub.md). The source build above includes the functionality shown in this README.
 
 Requires Docker Engine (or Docker Desktop) and Docker Compose v2. No source checkout is needed; the image includes the complete web console. The deployment host must be able to reach your SSH hosts.
 
@@ -173,7 +171,7 @@ Run `--init` only for the first deployment: it creates an empty configuration an
 
 ### 4. Complete setup for that image version
 
-Follow the first-account setup instructions in the pinned image's console and startup logs. The `admin / admin` installation default described above belongs to the current `dev` implementation and does not imply that the existing image was updated. Then configure resources and create a client-specific MCP Token.
+Follow the first-account setup instructions in the pinned image's console and startup logs, then configure resources and create a client-specific MCP Token. Source-built installations start with `admin / admin` when the identity database has no users.
 
 ### Compose configuration
 
@@ -279,7 +277,7 @@ docker compose stop
 docker compose start
 ```
 
-For a source-built `dev` image, update the source and repeat the earlier `build` and `up -d` steps, preserving `.env` and `runtime/`. The pull commands below apply to published images.
+For a source-built image, update the source and repeat the earlier `build` and `up -d` steps, preserving `.env` and `runtime/`. The pull commands below apply to published images.
 
 Set `SSHMCP_IMAGE` in `.env` to the new published version, then run:
 
@@ -314,7 +312,7 @@ Set `auth.cookie_secure: true` and `auth.cookie_path: /ssh-mcp/` in `runtime/con
 | Remote browsers cannot open the console | Default binding is local; use HTTPS proxying, an SSH tunnel, or an explicit network binding. |
 | Web login works but MCP authentication fails | Web accounts and MCP tokens are separate; create a token in the MCP Token page. |
 | Resources are unreachable from the container | Check networking, target addresses, and firewalls; avoid accidentally targeting the container's own loopback. |
-| How to sign in after installation | Current dev uses `admin / admin` if no users exist. Existing users retain their credentials; older images follow their own setup instructions. |
+| How to sign in after installation | Source-built installations use `admin / admin` if no users exist. Existing users retain their credentials; pinned images follow their version-specific setup instructions. |
 
 ## Other installation options
 
