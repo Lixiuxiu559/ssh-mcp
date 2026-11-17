@@ -1,0 +1,82 @@
+{
+  "published_at": "2026-11-17T10:11:39+00:00",
+  "release_date": "2026-11-17",
+  "repository": "lijx559/ssh-mcp",
+  "version": "0.3.0",
+  "tags": [
+    "0.3.0",
+    "latest"
+  ],
+  "public": true,
+  "index_digest": "sha256:74af165fb12615f79dfe619bcb0e7657aed58e546f79176fabb45bfa5b819988",
+  "previous_latest_digest": "sha256:c9ba2f11cd56a3a01bfcbae4e67ad7c7c413d4effffe267ddfadcc45ed65037a",
+  "base_index_digest": "sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
+  "source_revision": "4dd38a02bfdd42b8c68612dd79af1a329b1e02a8",
+  "source_dirty": false,
+  "source_fingerprint": "db6c6ca44d554f8cccd324caabbadf2e31b3b4a715546a5e42e987e7334424e4",
+  "images": [
+    {
+      "platform": "linux/amd64",
+      "manifest_digest": "sha256:c441d7b136cd2ff303a073e9549d7dd3bb2e0d2f77327798bb1d7b1358a06332",
+      "config_digest": "sha256:88e5a44231513778faf2c12e2451e7d233091696eb5acf5b8b9dc8e4f9789c84",
+      "anonymous_pull_verified": true
+    },
+    {
+      "platform": "linux/arm64",
+      "manifest_digest": "sha256:2f32011da096889ca05f891a5df2d3b5f192f35b2dd9811b114859a7a5ff8931",
+      "config_digest": "sha256:d28cfc67ede60606dbaaaec7f15123f666017fff5f15c93c1fb0aafdb6961946",
+      "anonymous_pull_verified": true
+    }
+  ],
+  "validation": {
+    "pytest_passed": 262,
+    "ruff": "passed",
+    "anonymous_pull": "both platforms passed",
+    "container_matrix": [
+      {
+        "platform": "linux/amd64",
+        "method": "run",
+        "fresh_start": true,
+        "default_account": true,
+        "nonroot": true,
+        "config_mode": "0600",
+        "token_key_mode": "0600",
+        "recreate_keeps_config_password_workspace_token_and_audit": true,
+        "no_env_file": true
+      },
+      {
+        "platform": "linux/amd64",
+        "method": "compose",
+        "fresh_start": true,
+        "default_account": true,
+        "nonroot": true,
+        "config_mode": "0600",
+        "token_key_mode": "0600",
+        "recreate_keeps_config_password_workspace_token_and_audit": true,
+        "no_env_file": true
+      },
+      {
+        "platform": "linux/arm64",
+        "method": "run",
+        "fresh_start": true,
+        "default_account": true,
+        "nonroot": true,
+        "config_mode": "0600",
+        "token_key_mode": "0600",
+        "recreate_keeps_config_password_workspace_token_and_audit": true,
+        "no_env_file": true
+      },
+      {
+        "platform": "linux/arm64",
+        "method": "compose",
+        "fresh_start": true,
+        "default_account": true,
+        "nonroot": true,
+        "config_mode": "0600",
+        "token_key_mode": "0600",
+        "recreate_keeps_config_password_workspace_token_and_audit": true,
+        "no_env_file": true
+      }
+    ]
+  }
+}

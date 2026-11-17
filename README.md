@@ -5,7 +5,7 @@
 **把服务器连接、AI 工具调用与操作追溯放在一个工作台。**
 
 [![Docker Hub](https://img.shields.io/badge/Docker_Hub-images-146ED0?logo=docker&logoColor=white)](https://hub.docker.com/r/lijx559/ssh-mcp)
-[![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-4B5FC4)](docs/releases/2026-10-30-dockerhub.md)
+[![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-4B5FC4)](docs/releases/2026-11-17-dockerhub.md)
 [![FastMCP](https://img.shields.io/badge/FastMCP-4.1.4-17242B)](https://gofastmcp.com)
 
 **简体中文** · [English](README.en.md)
@@ -258,6 +258,6 @@ export SSHMCP_IMAGE=ssh-mcp:local
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-[开发约定](CLAUDE.md) · [发布摘要](docs/releases/2026-10-30-dockerhub.md) · [反馈问题](https://github.com/Lixiuxiu559/ssh-mcp/issues)
+[开发约定](CLAUDE.md) · [发布摘要](docs/releases/2026-11-17-dockerhub.md) · [反馈问题](https://github.com/Lixiuxiu559/ssh-mcp/issues)
 
 本服务独立开发、发布和部署，与 [MCP 工作空间](https://github.com/Lixiuxiu559/mcp) 共享统一规范，运行时不依赖父目录或其他 MCP 仓库。
