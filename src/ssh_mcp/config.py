@@ -19,6 +19,7 @@ from pydantic import (
     BaseModel,
     Field,
     SecretStr,
+    StrictStr,
     field_validator,
     model_validator,
 )
@@ -60,19 +61,7 @@ class ListenerConfig(BaseModel):
     port: int = 8808
 
 
-DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_TOKEN = "admin"
-
-
-class UserEntry(BaseModel):
-    username: str
-    token: SecretStr
-    admin: bool = False
-
-
 class AuthConfig(BaseModel):
-    # users 仅用于旧 MCP token 的一次性迁移，不再是网页人员账号。
-    users: list[UserEntry] = Field(default_factory=list)
     database: Path = Path("data/service.db")
     session_hours: int = Field(default=8, ge=1, le=168)
     cookie_secure: bool = False
@@ -80,9 +69,6 @@ class AuthConfig(BaseModel):
 
     @model_validator(mode="after")
     def _ensure_users(self) -> AuthConfig:
-        names = [u.username for u in self.users]
-        if len(names) != len(set(names)):
-            raise ValueError("auth.users 中存在重复的 username")
         if not self.cookie_path.startswith("/") or not self.cookie_path.endswith("/"):
             raise ValueError("auth.cookie_path 必须以 / 开始和结束")
         return self
@@ -144,8 +130,16 @@ class ServerEntry(BaseModel):
     username: str
     description: str = ""
     tags: list[str] = Field(default_factory=list)
+    workspace_ids: list[StrictStr] = Field(default_factory=list, strict=True)
     known_hosts: str | None = None
     credential: CredentialSpec
+
+    @field_validator("workspace_ids")
+    @classmethod
+    def _workspaces_ok(cls, value: list[str]) -> list[str]:
+        if any(not item.strip() for item in value):
+            raise ValueError("workspace_ids 不能包含空标识")
+        return list(dict.fromkeys(value))
 
     @field_validator("alias")
     @classmethod
@@ -188,7 +182,6 @@ class GatewayConfig(BaseModel):
         """掩码凭据的配置摘要，用于调试输出。"""
         lines = [
             f"监听 {self.server.host}:{self.server.port}",
-            f"用户 {len(self.auth.users)} 个: {', '.join(u.username for u in self.auth.users)}",
             f"审计日志 {self.audit.path}",
         ]
         for s in self.servers:
@@ -207,6 +200,7 @@ _SERVER_KEYS = (
     "username",
     "description",
     "tags",
+    "workspace_ids",
     "known_hosts",
     "credential",
 )
@@ -263,36 +257,6 @@ class ConfigFile:
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.path)
 
-    def update_users(self, users: list[dict[str, Any]]) -> GatewayConfig:
-        """整体替换 auth.users。token 提交什么就存什么（含 ${ENV} 引用原文）。"""
-        cleaned: list[dict[str, Any]] = []
-        for u in users:
-            username = str(u.get("username") or "").strip()
-            token = str(u.get("token") or "").strip()
-            if not username:
-                raise ConfigError("用户名不能为空")
-            if not token:
-                raise ConfigError(f"用户 {username} 的 token 不能为空")
-            entry: dict[str, Any] = {"username": username, "token": token}
-            if u.get("admin"):
-                entry["admin"] = True
-            cleaned.append(entry)
-        if not cleaned:
-            raise ConfigError("至少要保留一个成员")
-        names = [u["username"] for u in cleaned]
-        dups = sorted({n for n in names if names.count(n) > 1})
-        if dups:
-            raise ConfigError(f"用户名重复: {', '.join(dups)}")
-        snapshot = deepcopy(self.raw)
-        self.raw.setdefault("auth", {})["users"] = cleaned
-        try:
-            config = self.load()
-        except Exception:
-            self.raw = snapshot
-            raise
-        self.save()
-        return config
-
     def upsert_server(self, entry: dict[str, Any]) -> GatewayConfig:
         """新增或更新一台服务器；校验失败会回滚内存中的原始树。"""
         entry = sanitize_server_entry(entry)
@@ -306,15 +270,17 @@ class ConfigFile:
             if idx is not None and not entry.get("credential"):
                 # 编辑时未填凭据：保留原凭据（含 ${ENV} 引用）
                 entry = {**entry, "credential": servers[idx].get("credential")}
+            if idx is not None and "workspace_ids" not in entry:
+                entry["workspace_ids"] = servers[idx].get("workspace_ids", [])
             if idx is not None:
                 servers[idx] = entry
             else:
                 servers.append(entry)
             config = self.load()
+            self.save()
         except Exception:
             self.raw["servers"] = snapshot
             raise
-        self.save()
         return config
 
     def delete_server(self, alias: str) -> GatewayConfig:
@@ -326,8 +292,8 @@ class ConfigFile:
                 raise ConfigError(f"服务器 {alias!r} 不存在")
             self.raw["servers"] = remaining
             config = self.load()
+            self.save()
         except Exception:
             self.raw["servers"] = snapshot
             raise
-        self.save()
         return config

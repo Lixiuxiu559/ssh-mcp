@@ -20,6 +20,9 @@ from typing import Any
 from fastmcp.server.dependencies import get_access_token, get_http_request
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
+from .authorization import REQUEST_TARGETS, authorize_server, current_token
+from .errors import AuthorizationError
+
 _LOG = logging.getLogger(__name__)
 _MAX_TEXT = 16_384
 _SECRET_KEYS = re.compile(
@@ -41,6 +44,8 @@ _MCP_FIELDS = (
     "token_id",
     "token_name",
     "token_prefix",
+    "workspace_id",
+    "workspace_name",
     "tool",
     "server",
     "target_host",
@@ -162,6 +167,10 @@ class AuditLogger:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
                 conn.executescript(_SCHEMA)
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(mcp_calls)")}
+                for name in ("workspace_id", "workspace_name"):
+                    if name not in columns:
+                        conn.execute(f"ALTER TABLE mcp_calls ADD COLUMN {name} TEXT")
                 self._migrate_legacy(conn)
                 conn.commit()
             except BaseException:
@@ -339,7 +348,10 @@ class AuditLogger:
         filters = {"status": status}
         if kind == "mcp":
             filters.update(server=server, token_id=token_id)
-            search = ("command", "path", "tool", "user", "server", "token_name", "target_host")
+            search = (
+                "command", "path", "tool", "user", "server", "token_name", "target_host",
+                "workspace_id", "workspace_name",
+            )
         else:
             filters.update(actor_user_id=user_id)
             search = ("username", "action", "object_type", "object_id", "summary")
@@ -445,6 +457,9 @@ def _context_identity(state: Any) -> tuple[dict[str, Any], tuple[str, ...]]:
                 info = state.identity.token_info(token.client_id)
                 if info:
                     identity.update(token_name=info.get("name"), token_prefix=info.get("prefix"))
+                    identity["workspace_id"] = info.get("workspace_id")
+                    workspace = state.identity.workspace_info(info.get("workspace_id"))
+                    identity["workspace_name"] = workspace["name"] if workspace else None
     except Exception:  # noqa: BLE001 - optional identity enrichment
         _LOG.debug("认证上下文不可用")
     if state is not None:
@@ -473,9 +488,25 @@ class AuditMiddleware(Middleware):
             "command": redact(args.get("command"), secrets),
             "path": redact(args.get("path"), secrets),
         }
+        denial = None
+        snapshots = None
         if self._state is not None:
-            target = self._state.config.get_server(str(args.get("server") or ""))
-            if target:
+            try:
+                target = (
+                    await authorize_server(self._state, args["server"])
+                    if args.get("server") is not None else None
+                )
+                if target is None:
+                    await current_token(self._state)
+            except AuthorizationError as exc:
+                denial, target = exc, None
+            # Capture coordinates only after asynchronous identity checks return.
+            # The pool compares these snapshots again before each external attempt.
+            snapshots = {
+                entry.alias: entry.model_dump(exclude={"workspace_ids"})
+                for entry in self._state.config.servers
+            }
+            if target is not None:
                 record.update(
                     target_host=target.host,
                     target_port=target.port,
@@ -500,8 +531,11 @@ class AuditMiddleware(Middleware):
         started = time.monotonic()
         call_id = await self._audit.begin_call(record)
         scope = _CALL.set((self._audit, call_id, secrets))
+        targets_scope = REQUEST_TARGETS.set(snapshots)
         outcome: dict[str, Any] = {"status": "unknown"}
         try:
+            if denial is not None:
+                raise denial
             task = asyncio.current_task()
             if task is not None and task.cancelling():
                 raise asyncio.CancelledError()
@@ -525,10 +559,14 @@ class AuditMiddleware(Middleware):
             outcome.update(status="cancelled", error="请求已取消；远端操作是否完成需另行核实")
             raise
         except Exception as exc:
-            status = "timeout" if "timeout" in type(exc).__name__.lower() else "error"
+            status = (
+                "denied" if isinstance(exc, AuthorizationError)
+                else "timeout" if "timeout" in type(exc).__name__.lower() else "error"
+            )
             outcome.update(status=status, error=redact(f"{type(exc).__name__}: {exc}", secrets))
             raise
         finally:
+            REQUEST_TARGETS.reset(targets_scope)
             _CALL.reset(scope)
             outcome["duration_ms"] = round((time.monotonic() - started) * 1000, 1)
             await self._audit.finish_call(call_id, outcome)

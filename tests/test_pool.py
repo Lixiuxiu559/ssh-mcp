@@ -7,7 +7,7 @@ import asyncio
 import asyncssh
 import pytest
 
-from ssh_mcp.errors import CredentialConfigError, ServerNotFoundError, SshTimeoutError
+from ssh_mcp.errors import AuthorizationError, CredentialConfigError, SshTimeoutError
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ async def test_get_connection_caches(pool):
 
 async def test_unknown_alias_lists_available(pool):
     pool_obj, _ = pool
-    with pytest.raises(ServerNotFoundError, match="web-1、db-1"):
+    with pytest.raises(AuthorizationError, match="web-1、db-1"):
         await pool_obj.get_connection("nope")
 
 

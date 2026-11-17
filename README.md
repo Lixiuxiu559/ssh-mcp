@@ -93,15 +93,19 @@ curl -fsS http://127.0.0.1:8808/healthz
 
 `--init` 仅首次创建空配置，不覆盖已有文件；已有部署升级时跳过初始化命令。健康接口返回 `{"ok":true}` 后，打开 **http://127.0.0.1:8808/**。
 
-### 4. 创建首位用户
+### 4. 使用安装默认账号登录
 
-```bash
-docker compose exec ssh-mcp cat /data/data/setup.key
-```
+当前源码及据此构建的镜像，首次安装启动且身份库没有用户时，自动创建默认登录账号 **`admin`**、密码 **`admin`**，无需读取初始化码。源码、Docker/Compose、安装包与 uvx 共用此规则；上文版本化镜像需后续发布后包含该改动。
 
-把一次性初始化码填入页面，设置用户名与独立密码。初始化完成后该文件自动删除，没有默认登录账号。
+登录后可在账号菜单修改密码。普通新建、修改和重置密码要求 **6–1024 个字符**；安装默认密码为唯一长度例外。已有用户时不会补建默认账号或重置密码，常规重启、升级保留原有账号、密码及有效 MCP token。
 
 在「服务器」中添加目标主机与凭据，再到「MCP Token」创建客户端专用 token。私钥与 `known_hosts` 可放在 `runtime/keys/`，配置中使用 `keys/...` 相对路径。
+
+### 当前源码的工作空间配置
+
+工作空间功能已接入当前源码和本地前端产物。使用本功能请从当前源码启动，或自行构建对应镜像。上文快速部署引用的版本化镜像，需要后续发布才会包含本次改动。
+
+先在「工作空间」创建项目，再添加SSH 设备并多选所属工作空间。在「MCP Token」创建客户端凭证时必须选择一个工作空间，客户端只可列出和操作该空间的资源。私钥与 `known_hosts` 可放在 `runtime/keys/`，配置中使用 `keys/...` 相对路径。
 
 ### Compose 配置说明
 
@@ -126,6 +130,8 @@ docker compose exec ssh-mcp cat /data/data/setup.key
 
 在工作台创建并保存 MCP token，然后为支持 HTTP 的客户端添加配置：
 
+Claude Code 在项目目录的 `.mcp.json` 中配置。
+
 ```json
 {
   "mcpServers": {
@@ -136,6 +142,14 @@ docker compose exec ssh-mcp cat /data/data/setup.key
     }
   }
 }
+```
+
+Codex 在 `~/.codex/config.toml` 或受信任项目的 `.codex/config.toml` 中配置。
+
+```toml
+[mcp_servers.ssh-mcp]
+url = "http://127.0.0.1:8808/mcp"
+http_headers = { Authorization = "Bearer <MCP_TOKEN>" }
 ```
 
 上例适用于客户端和服务在同一台机器。远程接入请把 URL 换成网关的实际 HTTPS 地址；已有网关的用户无需再启动一份服务。使用 token 后可先调用 `list_servers` 获取资源名称。
@@ -153,7 +167,12 @@ docker compose exec ssh-mcp cat /data/data/setup.key
 
 - 网页使用用户名/密码、HttpOnly Cookie 会话与 CSRF 校验；所有启用人员同权。
 - 成员列表支持直接启用/禁用和确认删除；最后一个启用账号不可禁用或删除。删除账号会撤销其网页会话，保留历史审计及其创建的 MCP token。
-- MCP token 与人员账号独立：新 token 只展示一次明文，后续只显示元数据；仅用于 `/mcp`，不能登录网页。
+- 后台统一管理全部工作空间和资源。每个SSH 设备只创建一次，可归属多个项目；留空时任何 MCP token 都无法访问。每枚 token 创建时必须单选空间，归属固定。移除资源的项目归属后，该项目已有 MCP 会话的后续调用也会被拒绝。
+- 工作空间仍关联资源或未删除的 token（含停用 token）时，删除会被拒绝。修改共享资源的连接配置影响所有使用它的项目。
+- MCP token 与人员账号独立：当前源码新建的 token 支持列表复制，接入提供 Claude Code 与 Codex 两种示例。服务保存验证哈希和加密副本，列表仅返回元数据；原有仅哈希的 token 无法恢复，需新建才能复制。token 仅用于 `/mcp`，不能登录网页。
+
+- 当前源码的 Token 创建与编辑可设置到期时间，留空长期有效；时间按浏览器时区输入。到期后停止新的 MCP 请求与调用，人员仍可复制或调整期限；复制不会自动恢复权限。重启与升级保留原期限，已删除 Token 不能复活。
+- 用户名、显示名和 Token 名称上限128个 Unicode 字符，Token 备注上限1000；登录和编辑使用相同边界。
 - 重启、升级或重建容器保留有效 token；创建新 token、停用创建者不会自动删除其他 token。禁用后可重新启用；删除后立即失效并从管理列表移除，历史审计保留。密码修改或人员停用会撤销该人员会话。
 - 人员审计记录登录与配置变更；MCP 审计记录 token、实际主机/端口/远端账号及命令或路径、结果和耗时。默认保留 30 天，可筛选、查看详情与导出 CSV。
 - 审计不保存凭据或完整文件正文。命令可能包含业务数据，已识别凭据脱敏不能识别任意业务秘密。SQLite 审计不提供防篡改或跨系统事务保证。
@@ -167,9 +186,9 @@ docker compose exec ssh-mcp cat /data/data/setup.key
 | 宿主路径 | 内容 |
 |---|---|
 | `runtime/config.yaml` | 服务与资源配置。 |
-| `runtime/data/service.db` | 人员、会话与 token 验证值。 |
+| `runtime/data/service.token.key` | Token 复制的持久化加密密钥，必须随身份数据库一起备份和恢复。 |
+| `runtime/data/service.db` | 人员、会话、工作空间与 token 归属、验证值和加密副本。 |
 | `runtime/audit/audit.db` | 人员操作与 MCP 调用审计。 |
-| `runtime/data/setup.key` | 仅首次初始化期间存在。 |
 | `runtime/keys/` | 上传的私钥、known_hosts 等 SSH 文件。 |
 
 这些文件与 `.env`、`backups/` 均不应提交到 Git；升级或更换容器时保留整个 `runtime/`。
@@ -184,7 +203,7 @@ docker compose down
 
 ### 备份与更新
 
-先停止服务再备份完整目录，包含 SQLite 的 WAL/SHM 文件；也可使用可靠的 SQLite 在线备份方式。
+先停止服务再备份完整目录，包含 SQLite 的 WAL/SHM 文件与 `data/service.token.key`；使用 SQLite 在线备份时也要保存匹配的加密密钥。密钥丢失或损坏会阻止复制和新签发，已有哈希认证继续独立工作。
 
 ```bash
 mkdir -p backups
@@ -201,7 +220,7 @@ docker compose up -d
 docker compose ps
 ```
 
-从 0.1.x 升级时，显式配置的旧 `auth.users` token 会幂等迁移并继续用于 MCP；网页登录改用独立账号。旧审计标为 legacy，不推测缺失的 token 归属。先在备份副本演练迁移。回滚需要匹配的镜像、配置与数据备份，不要删除身份库或重建 token 来处理登录问题。
+本次工作空间功能按全新部署设计。初始化后在后台创建工作空间、分配资源并签发 token；旧 `auth.users` 凭证不会自动导入，缺少工作空间的 token 无法调用 MCP。常规重启和升级保留工作空间及有效凭证。历史审计保留已有归属，备份与回滚仍需匹配配置和数据。
 
 ### HTTPS 与反向代理
 
@@ -226,7 +245,7 @@ location /ssh-mcp/ {
 | 远程浏览器无法打开页面 | 默认仅本机监听；使用 HTTPS 反代、SSH 隧道，或显式修改绑定地址。 |
 | 网页登录后 MCP 仍认证失败 | 网页账号与 MCP token 分开管理，在 MCP Token 页面创建专用凭证。 |
 | 容器连不上资源 | 检查容器网络、目标地址与防火墙，避免误用容器自己的 `127.0.0.1`。 |
-| 提示初始化码文件不存在 | 首位用户创建后文件会删除，使用已有用户名/密码登录。 |
+| 首次安装如何登录 | 当前源码首次启动无用户时自动创建 `admin / admin`；已有用户时使用原账号密码。 |
 
 ## 其他启动方式
 

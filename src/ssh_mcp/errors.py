@@ -11,6 +11,10 @@ class SshMcpError(ToolError):
     """ssh-mcp 工具错误基类。"""
 
 
+class AuthorizationError(SshMcpError):
+    """当前调用无权访问目标；消息不得泄露其他空间的资源。"""
+
+
 class ServerNotFoundError(SshMcpError):
     def __init__(self, alias: str, available: list[str]):
         self.alias = alias

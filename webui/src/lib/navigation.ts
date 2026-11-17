@@ -3,6 +3,7 @@ import type { Page } from "../types";
 export const navigation: { id: Page; label: string }[] = [
   { id: "overview", label: "总览" },
   { id: "servers", label: "服务器管理" },
+  { id: "workspaces", label: "工作空间" },
   { id: "tokens", label: "MCP Token" },
   { id: "users", label: "成员管理" },
   { id: "mcp-audit", label: "MCP 调用审计" },

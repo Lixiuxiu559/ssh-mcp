@@ -27,7 +27,7 @@ def create_mcp(cfg_file: ConfigFile) -> tuple[FastMCP, GatewayState]:
     mcp = FastMCP(
         name="ssh-mcp",
         instructions=(
-            "团队共享 SSH 网关，可操作多台已配置的远端 Linux 服务器。\n"
+            "团队共享 SSH 网关，仅可操作当前 Token 所属工作空间的远端 Linux 服务器。\n"
             "流程：先用 list_servers 获取服务器别名（alias），之后所有工具都用 alias 指定服务器：\n"
             "- 执行命令: exec_command（远端为 Linux shell）\n"
             "- 浏览/读取文件: list_dir / read_file（仅 UTF-8 文本，二进制用 download_file）\n"

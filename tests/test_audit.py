@@ -14,6 +14,7 @@ from fastmcp.tools import ToolResult
 
 from ssh_mcp import audit as audit_module
 from ssh_mcp.audit import AuditLogger, AuditMiddleware, record_attempt, redact
+from ssh_mcp.config import ServerEntry
 
 
 def past(days):
@@ -47,12 +48,12 @@ async def test_audit_records_tool_calls(gw):
     ok = next(row for row in rows if row["server"] == "web-1")
     error = next(row for row in rows if row["server"] == "nope")
     assert ok["status"] == "ok"
-    assert ok["user"] == "anonymous"
-    assert ok["token_id"] is None
+    assert ok["user"] == gw.state.identity.verify_token(gw.tokens["alice"])["id"]
+    assert ok["token_id"] is not None
     assert ok["target_host"] == gw.state.config.get_server("web-1").host
     assert ok["duration_ms"] >= 0 and ok["ended_at"]
-    assert error["status"] == "error"
-    assert "ServerNotFoundError" in error["error"]
+    assert error["status"] == "denied"
+    assert "AuthorizationError" in error["error"]
 
 
 async def test_audit_does_not_record_file_content(gw, harness):
@@ -71,16 +72,22 @@ async def test_audit_does_not_record_file_content(gw, harness):
 async def test_token_snapshot_and_secret_redaction(audit, monkeypatch):
     token = SimpleNamespace(client_id="token-stable-1", token="mcp-actual-secret")
     monkeypatch.setattr(audit_module, "get_access_token", lambda: token)
-    target = SimpleNamespace(
+    from ssh_mcp import authorization
+    monkeypatch.setattr(authorization, "get_access_token", lambda: token)
+    target = ServerEntry(
+        alias="web-1",
+        workspace_ids=["workspace-1"],
         host="10.2.3.4",
         port=2222,
         username="deploy",
-        credential=SimpleNamespace(
-            password=SimpleNamespace(get_secret_value=lambda: "target-password")
-        ),
+        credential={"type": "password", "password": "target-password"},
     )
     state = SimpleNamespace(
-        identity=SimpleNamespace(token_info=lambda _: {"name": "ci-runner", "prefix": "mcp_abc"}),
+        identity=SimpleNamespace(
+            token_info=lambda _: {"name": "ci-runner", "prefix": "mcp_abc", "enabled": True,
+                                  "revoked": False, "workspace_id": "workspace-1"},
+            active_token_info=lambda _: {"workspace_id": "workspace-1", "expires_at": None},
+            workspace_info=lambda _: {"id": "workspace-1", "name": "空间快照"}),
         config=SimpleNamespace(get_server=lambda _: target, servers=[target]),
     )
     middleware = AuditMiddleware(audit, state)

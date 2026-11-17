@@ -8,8 +8,9 @@ import stat as stat_module
 from fastmcp import FastMCP
 from fastmcp.dependencies import Depends
 
+from ..authorization import authorize_server, visible_servers
 from ..dependencies import get_state
-from ..errors import ServerNotFoundError
+from ..errors import AuthorizationError
 from ..ssh.models import (
     DiskInfo,
     HealthData,
@@ -123,7 +124,7 @@ def register(mcp: FastMCP) -> None:
     async def list_servers(
         state: GatewayState = Depends(get_state),
     ) -> ServerListResult:
-        """列出所有已配置的远端服务器。
+        """列出当前 Token 所属工作空间可访问的远端服务器。
 
         返回别名(alias)、主机、账户、标签与凭据类型（不包含凭据本身）。
         后续所有工具都用 alias 指定服务器。开始任务时建议先调用本工具。
@@ -139,7 +140,7 @@ def register(mcp: FastMCP) -> None:
                     tags=s.tags,
                     credential_type=s.credential.type,
                 )
-                for s in state.config.servers
+                for s in await visible_servers(state)
             ]
         )
 
@@ -151,14 +152,13 @@ def register(mcp: FastMCP) -> None:
         """查看服务器健康状态：负载、内存、磁盘用量、CPU 核数、运行时长。
 
         Args:
-            server: 服务器别名；不填则聚合检查所有服务器（单台失败不影响整体）。
+            server: 服务器别名；不填则检查当前工作空间全部可见服务器（单台失败不影响整体）。
         """
         if server is not None:
-            if state.config.get_server(server) is None:
-                raise ServerNotFoundError(server, [s.alias for s in state.config.servers])
+            await authorize_server(state, server)
             aliases = [server]
         else:
-            aliases = [s.alias for s in state.config.servers]
+            aliases = [s.alias for s in await visible_servers(state)]
 
         async def check(alias: str) -> HealthEntry:
             async def op(conn):
@@ -170,6 +170,8 @@ def register(mcp: FastMCP) -> None:
                 )
                 output = (proc.stdout or b"").decode("utf-8", "replace")
                 return HealthEntry(alias=alias, status="ok", data=_parse_health(output))
+            except AuthorizationError:
+                raise
             except Exception as exc:  # noqa: BLE001 - 聚合模式下单机失败记为 error 条目
                 return HealthEntry(alias=alias, status="error", error=f"{type(exc).__name__}: {exc}")
 

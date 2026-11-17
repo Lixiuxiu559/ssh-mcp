@@ -11,7 +11,11 @@ export const personActionLabels: Record<string, string> = {
   "server.update": "更新服务器",
   "server.delete": "删除服务器",
   "server.test": "测试连接",
+  "workspace.create": "创建工作空间",
+  "workspace.update": "重命名工作空间",
+  "workspace.delete": "删除工作空间",
   "token.create": "创建 Token",
+  "token.copy": "复制 Token",
   "token.update": "更新 Token",
   "token.delete": "删除 Token",
   "token.revoke": "吊销 Token",
@@ -52,6 +56,8 @@ export function personObjectLabel(record: AuditRecord, users: User[]) {
           : user?.username;
       return name ? `成员 · ${name}` : "成员账号";
     }
+    case "workspace":
+      return record.workspace_name ? `工作空间 · ${record.workspace_name}` : "工作空间";
     case "token":
       return record.token_name ? `Token · ${record.token_name}` : "MCP Token";
     case "server":

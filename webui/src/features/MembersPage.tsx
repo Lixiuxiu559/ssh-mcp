@@ -19,6 +19,7 @@ import { DataTable, type TableColumn } from "../components/DataTable";
 import { Feedback } from "../components/Feedback";
 import { PageHeading } from "../components/PageHeading";
 import { AppModal } from "../components/AppModal";
+import { characterLengthRule, passwordLengthRule } from "../lib/identity";
 
 interface UserValues {
   username: string;
@@ -90,6 +91,7 @@ function UserEditor({
         id={formId}
         layout="vertical"
         onFinish={submit}
+        scrollToFirstError={{ focus: true }}
         disabled={busy}
         initialValues={{
           username: user?.username || "",
@@ -99,12 +101,15 @@ function UserEditor({
         <Form.Item
           name="username"
           label="用户名"
-          rules={[{ required: true, message: "请输入用户名" }]}
+          rules={[
+            { required: true, whitespace: true, message: "请输入用户名" },
+            characterLengthRule(128, "用户名须为 1–128 个字符"),
+          ]}
         >
-          <Input autoComplete="off" disabled={!!user || busy} maxLength={64} />
+          <Input autoComplete="off" disabled={!!user || busy} />
         </Form.Item>
-        <Form.Item name="display_name" label="显示名称（可选）">
-          <Input maxLength={100} />
+        <Form.Item name="display_name" label="显示名称（可选）" rules={[characterLengthRule(128, "显示名不能超过 128 个字符")]}>
+          <Input />
         </Form.Item>
         <Form.Item
           name="password"
@@ -112,13 +117,12 @@ function UserEditor({
           extra={user ? "修改密码会结束该用户的现有网页登录。" : undefined}
           rules={[
             { required: !user, message: "请输入登录密码" },
-            { min: 10, message: "密码至少需要 10 位" },
+            passwordLengthRule(),
           ]}
         >
           <Input.Password
-            maxLength={1024}
             autoComplete="new-password"
-            placeholder="至少 10 位"
+            placeholder="至少 6 位"
           />
         </Form.Item>
       </Form>

@@ -28,6 +28,7 @@ servers: []
 #     username: deploy
 #     description: 应用服务器
 #     tags: [prod]
+#     workspace_ids: []  # 在后台创建空间后填写其 ID；空列表不会向任何 MCP Token 开放
 #     known_hosts: keys/known_hosts
 #     credential:
 #       type: password

@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import type { AuditRecord, ServerEntry } from "../types";
 import { useResource } from "../lib/use-resource";
+import type { WorkspaceEntry } from "../console-types";
+import { WorkspaceLabels } from "./WorkspaceAccess";
 import { formatTime, formatCompactTime } from "../lib/utils";
 import { useListPagination } from "../lib/pagination";
 import { AppTable } from "./AppTable";
@@ -40,6 +42,7 @@ export const credentialLabels: Record<string, string> = {
 
 export function ServerDetails({
   server,
+  workspaces,
   check,
   busy,
   onBack,
@@ -48,6 +51,7 @@ export function ServerDetails({
   onDelete,
 }: {
   server: ServerEntry;
+  workspaces: WorkspaceEntry[];
   check?: ConnectionCheck;
   busy: boolean;
   onBack: () => void;
@@ -101,6 +105,7 @@ export function ServerDetails({
         <Descriptions
           column={2}
           items={[
+            { key: "workspaces", label: "工作空间", children: <WorkspaceLabels ids={server.workspace_ids} workspaces={workspaces} /> },
             { key: "host", label: "SSH 地址", children: server.host },
             { key: "port", label: "端口", children: server.port },
             { key: "credential", label: "认证方式", children: credential },
@@ -166,6 +171,7 @@ export function ServerDetails({
       <Descriptions
         column={2}
         items={[
+          { key: "workspaces", label: "工作空间", children: <WorkspaceLabels ids={server.workspace_ids} workspaces={workspaces} /> },
           { key: "alias", label: "服务器别名", children: server.alias },
           {
             key: "host",

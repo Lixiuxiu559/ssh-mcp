@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   Boxes,
+  FolderOpen,
   History,
   KeyRound,
   LayoutDashboard,
@@ -16,6 +17,7 @@ import Servers from "./pages/Servers";
 import Overview from "./pages/Overview";
 import UsersPage from "./pages/Users";
 import Tokens from "./pages/Tokens";
+import WorkspacesPage from "./features/WorkspacesPage";
 import Audit from "./pages/Audit";
 import { ConsoleLayout } from "./components/ConsoleLayout";
 import { Feedback } from "./components/Feedback";
@@ -31,6 +33,7 @@ const icons: Record<Page, LucideIcon> = {
   servers: Server,
   users: Users,
   tokens: KeyRound,
+  workspaces: FolderOpen,
   "mcp-audit": Activity,
   "person-audit": History,
 };
@@ -118,11 +121,13 @@ export default function App() {
           onRefreshHealth={health.reload}
         />
       ) : page === "servers" ? (
-        <Servers />
+        <Servers onManageWorkspaces={() => navigate("workspaces")} />
       ) : page === "users" ? (
         <UsersPage key={session.user.display_name} currentUser={session.user} />
+      ) : page === "workspaces" ? (
+        <WorkspacesPage />
       ) : page === "tokens" ? (
-        <Tokens />
+        <Tokens onManageWorkspaces={() => navigate("workspaces")} />
       ) : (
         <Audit key={page} kind={page === "mcp-audit" ? "mcp" : "person"} />
       )}

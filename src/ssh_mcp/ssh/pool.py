@@ -20,7 +20,7 @@ from ..config import (
     PrivateKeyInlineSpec,
     ServerEntry,
 )
-from ..errors import CredentialConfigError, ServerNotFoundError, SshTimeoutError
+from ..errors import AuthorizationError, CredentialConfigError, ServerNotFoundError, SshTimeoutError
 
 T = TypeVar("T")
 
@@ -49,15 +49,22 @@ _RETRYABLE = (
 
 
 class ConnectionPool:
-    def __init__(self, config_fn: Callable[[], GatewayConfig]):
+    def __init__(
+        self, config_fn: Callable[[], GatewayConfig],
+        authorize: Callable[[str], Awaitable[ServerEntry]] | None = None,
+    ):
         self._config_fn = config_fn
+        self._authorize = authorize
         self._conns: dict[str, Any] = {}
+        self._connection_entries: dict[str, Any] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._sems: dict[str, asyncio.Semaphore] = {}
 
     # ------------------------------------------------------------ 内部
 
-    def _entry(self, alias: str) -> ServerEntry:
+    async def _entry(self, alias: str) -> ServerEntry:
+        if self._authorize is not None:
+            return await self._authorize(alias)
         entry = self._config_fn().get_server(alias)
         if entry is None:
             raise ServerNotFoundError(alias, [s.alias for s in self._config_fn().servers])
@@ -117,20 +124,36 @@ class ConnectionPool:
 
     async def get_connection(self, alias: str) -> Any:
         """取缓存连接，没有则新建。连接失败直接抛 ToolError 子类，不重试。"""
-        entry = self._entry(alias)
         async with self._lock(alias):
-            conn = self._conns.get(alias)
-            if conn is not None:
+            while True:
+                entry = await self._entry(alias)
+                conn = self._conns.get(alias)
+                if conn is not None:
+                    signature = entry.model_dump(exclude={"workspace_ids"})
+                    if self._connection_entries.get(alias, signature) == signature:
+                        return conn
+                    self.invalidate(alias)
+                conn = await self._connect(entry)
+                try:
+                    latest = await self._entry(alias)
+                except BaseException:
+                    conn.close()
+                    raise
+                if entry.model_dump(exclude={"workspace_ids"}) != latest.model_dump(
+                    exclude={"workspace_ids"}
+                ):
+                    conn.close()
+                    continue
+                self._conns[alias] = conn
+                self._connection_entries[alias] = latest.model_dump(exclude={"workspace_ids"})
                 return conn
-            conn = await self._connect(entry)
-            self._conns[alias] = conn
-            return conn
 
     async def connect_one_shot(self, entry: ServerEntry) -> Any:
         """新建一次性连接（不缓存），供"测试连接"使用。"""
         return await self._connect(entry)
 
     def invalidate(self, alias: str) -> None:
+        self._connection_entries.pop(alias, None)
         conn = self._conns.pop(alias, None)
         if conn is not None:
             conn.close()
@@ -145,10 +168,12 @@ class ConnectionPool:
         只对 `_RETRYABLE`（连接级）重试。确定性错误（文件不存在、权限不足等）
         会直接抛出——它们已被工具层翻译成领域异常，重试无意义。
         """
+        await self._entry(alias)
         async with self._semaphore(alias):
             conn = await self.get_connection(alias)
             await record_attempt(1, "started")
             try:
+                await self._validate_connection(alias, conn)
                 result = await op(conn)
             except _RETRYABLE as exc:
                 await record_attempt(1, "error", str(exc))
@@ -156,6 +181,7 @@ class ConnectionPool:
                 conn = await self.get_connection(alias)
                 await record_attempt(2, "started")
                 try:
+                    await self._validate_connection(alias, conn)
                     result = await op(conn)
                 except BaseException as exc2:
                     await record_attempt(2, "error", str(exc2))
@@ -171,3 +197,11 @@ class ConnectionPool:
                 raise
             await record_attempt(1, "ok")
             return result
+
+    async def _validate_connection(self, alias: str, conn: Any) -> None:
+        entry = await self._entry(alias)
+        signature = entry.model_dump(exclude={"workspace_ids"})
+        if self._conns.get(alias) is not conn or self._connection_entries.get(
+            alias, signature
+        ) != signature:
+            raise AuthorizationError("服务器配置已变更，请重新调用工具")

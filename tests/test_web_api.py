@@ -23,30 +23,33 @@ async def web(gw):
 
 @pytest.fixture
 async def logged(web, gw):
+    identity = gw.state.identity
+    default_user = identity.list_users()[0]
+    identity.create_user("alice", "alice-password")
+    identity.delete_user(default_user["id"])
     response = await web.post(
-        "/api/auth/setup",
+        "/api/auth/login",
         json={
             "username": "alice",
             "password": "alice-password",
-            "setup_key": gw.state.identity.setup_key_path.read_text(),
         },
     )
-    assert response.status_code == 201, response.text
+    assert response.status_code == 200, response.text
     web.headers["X-CSRF-Token"] = response.json()["csrf_token"]
     return web
 
 
-async def test_static_health_and_no_default_admin(web):
+async def test_static_health_and_default_account(web, gw):
     assert (await web.get("/")).status_code == 200
     assert (await web.get("/healthz")).json() == {"ok": True}
-    assert (await web.get("/api/auth/status")).json() == {"setup_required": True}
+    assert (await web.get("/api/auth/status")).json() == {"setup_required": False}
     assert (await web.get("/api/me")).status_code == 401
     assert (
-        await web.get("/api/me", headers={"Authorization": "Bearer tok-alice"})
+        await web.get("/api/me", headers={"Authorization": f"Bearer {gw.tokens['alice']}"})
     ).status_code == 401
     assert (
         await web.post("/api/auth/login", json={"username": "admin", "password": "admin"})
-    ).status_code == 401
+    ).status_code == 200
 
 
 async def test_setup_cookie_csrf_and_logout(logged):
@@ -102,7 +105,7 @@ async def test_delete_member_requires_csrf_and_revokes_sessions_without_revoking
     )).json()
     bob_id = bob["id"]
     _, bob_session, _ = gw.state.identity.login("bob", "bob-password")
-    value, token = gw.state.identity.create_token("bob-client", bob_id)
+    value, token = gw.state.identity.create_token("bob-client", bob_id, workspace_id=gw.workspace["id"])
     await gw.state.audit.log_person({
         "action": "user.login", "actor_user_id": bob_id, "username": "bob", "status": "ok"
     })
@@ -142,7 +145,7 @@ async def test_member_can_delete_own_account_when_another_enabled_account_remain
 
 
 async def test_resource_crud_preserves_secret_and_hot_reload(logged, gw):
-    response = await logged.post("/api/servers", json=_NEW_SERVER)
+    response = await logged.post("/api/servers", json={**_NEW_SERVER, "workspace_ids": [gw.workspace["id"]]})
     assert response.status_code == 201 and "redis-pw" not in response.text
     response = await logged.put(
         "/api/servers/cache-1", json={"host": "10.0.0.31", "username": "redis"}
@@ -184,15 +187,15 @@ async def test_connection_and_key_operations(logged, gw, harness, tmp_path):
 
 
 async def test_token_management_and_old_token_independence(logged, gw):
-    old = await gw.mcp.auth.verify_token("tok-bob")
+    old = await gw.mcp.auth.verify_token(gw.tokens["bob"])
     assert old is not None
-    created = await logged.post("/api/tokens", json={"name": "new-codex", "description": "CI"})
+    created = await logged.post("/api/tokens", json={"name": "new-codex", "description": "CI", "workspace_id": gw.workspace["id"]})
     assert created.status_code == 201
     value, item = created.json()["token"], created.json()["item"]
     assert (await gw.mcp.auth.verify_token(value)).client_id == item["id"]
-    assert await gw.mcp.auth.verify_token("tok-bob") is not None
+    assert await gw.mcp.auth.verify_token(gw.tokens["bob"]) is not None
     response = await logged.get("/api/tokens")
-    assert value not in response.text and "tok-bob" not in response.text
+    assert value not in response.text and gw.tokens["bob"] not in response.text
     assert (
         await logged.patch(f"/api/tokens/{item['id']}", json={"enabled": False})
     ).status_code == 200
@@ -211,7 +214,7 @@ async def test_token_management_and_old_token_independence(logged, gw):
 
 
 async def test_token_delete_is_idempotent_and_preserves_audit_history(logged, gw):
-    created = await logged.post("/api/tokens", json={"name": "delete-me"})
+    created = await logged.post("/api/tokens", json={"name": "delete-me", "workspace_id": gw.workspace["id"]})
     value, item = created.json()["token"], created.json()["item"]
     await gw.state.audit.log(
         {"token_id": item["id"], "token_name": item["name"], "tool": "run_command",
@@ -240,15 +243,15 @@ async def test_token_delete_is_idempotent_and_preserves_audit_history(logged, gw
 
 
 async def test_management_token_list_hides_previously_revoked_tokens(logged, gw):
-    item = gw.state.identity.verify_token("tok-bob")
+    item = gw.state.identity.verify_token(gw.tokens["bob"])
     gw.state.identity.revoke_token(item["id"])
     listed = (await logged.get("/api/tokens")).json()["tokens"]
     assert listed and all(not row["revoked"] for row in listed)
     assert item["id"] not in {row["id"] for row in listed}
 
 
-async def test_person_audit_attribution_and_no_secrets(logged):
-    created = await logged.post("/api/tokens", json={"name": "=formula"})
+async def test_person_audit_attribution_and_no_secrets(logged, gw):
+    created = await logged.post("/api/tokens", json={"name": "=formula", "workspace_id": gw.workspace["id"]})
     token, token_id = created.json()["token"], created.json()["item"]["id"]
     await logged.patch(f"/api/tokens/{token_id}", json={"name": "renamed"})
     await logged.post("/api/users", json={"username": "bob", "password": "second-password"})
@@ -283,7 +286,7 @@ async def test_established_http_mcp_session_rejects_deleted_token(gw):
     """真实 HTTP 中间件：已初始化的会话不能凭旧 token 绕过删除。"""
     app = gw.mcp.http_app(json_response=True, stateless_http=False)
     headers = {
-        "Authorization": "Bearer tok-alice",
+        "Authorization": f"Bearer {gw.tokens['alice']}",
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
@@ -317,13 +320,18 @@ async def test_established_http_mcp_session_rejects_deleted_token(gw):
         assert ready.status_code == 202
         listed = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         assert listed.status_code == 200, listed.text
-        item = gw.state.identity.verify_token("tok-alice")
+        item = gw.state.identity.verify_token(gw.tokens["alice"])
         gw.state.identity.delete_token(item["id"])
         denied = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
         assert denied.status_code == 401, denied.text
 
 
 async def test_setup_normalizes_username_before_creating_session(web, gw):
+    # 显式初始化接口的兼容测试使用未启动的身份库。
+    from ssh_mcp.auth import IdentityStore
+
+    gw.state.identity.close()
+    gw.state.identity = IdentityStore(gw.config_path.parent / "manual-setup.db")
     response = await web.post(
         "/api/auth/setup",
         json={

@@ -156,6 +156,9 @@ export default function Audit({ kind }: { kind: AuditKind }) {
               ? row.username || row.user || "未认证来源"
               : row.token_name || row.user || "历史调用"}
           </Text>
+          {!person && (row.workspace_name || row.workspace_id) && (
+            <Text ellipsis type="secondary" title={row.workspace_id || undefined}>{row.workspace_name || row.workspace_id}</Text>
+          )}
           {!person && (
             <Text ellipsis type="secondary" className="mono">
               {row.token_prefix || row.token_id || "legacy"}
@@ -383,6 +386,11 @@ export default function Audit({ kind }: { kind: AuditKind }) {
                   children: person
                     ? details.username || details.user || "未认证来源"
                     : details.token_name || details.user || "历史调用",
+                },
+                {
+                  key: "workspace",
+                  label: "工作空间",
+                  children: <Text className="wrap-anywhere" title={details.workspace_id || undefined}>{details.workspace_name || details.workspace_id || "—"}</Text>,
                 },
                 {
                   key: "identity-id",

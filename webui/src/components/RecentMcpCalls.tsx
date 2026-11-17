@@ -1,5 +1,5 @@
 import { Activity, ArrowRight, RefreshCw } from "lucide-react";
-import { Button, Card, Space, Typography } from "antd";
+import { Button, Card, Flex, Space, Typography } from "antd";
 import type { TableColumnsType } from "antd";
 import { AppTable } from "./AppTable";
 import { Feedback, Status } from "./Feedback";
@@ -8,6 +8,7 @@ import { ListNotice } from "./ListStates";
 export interface RecentMcpCall {
   id: string | number;
   token: string;
+  workspace?: string;
   target: string;
   tool: string;
   status: string;
@@ -41,7 +42,17 @@ export function RecentMcpCalls({
   onViewAudit,
 }: RecentMcpCallsProps) {
   const columns: TableColumnsType<RecentMcpCall> = [
-    { dataIndex: "token", title: "Token", ellipsis: true },
+    {
+      dataIndex: "token",
+      title: "Token / 工作空间",
+      ellipsis: true,
+      render: (token: string, record) => (
+        <Flex vertical align="center" style={{ minWidth: 0 }}>
+          <Typography.Text ellipsis title={token} style={{ maxWidth: "100%" }}>{token}</Typography.Text>
+          {record.workspace && <Typography.Text ellipsis type="secondary" title={record.workspace} style={{ maxWidth: "100%" }}>{record.workspace}</Typography.Text>}
+        </Flex>
+      ),
+    },
     { dataIndex: "target", title: targetLabel, ellipsis: true },
     { dataIndex: "tool", title: "工具", ellipsis: true },
     {

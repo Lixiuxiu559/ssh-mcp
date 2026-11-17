@@ -13,6 +13,8 @@ import type { ColumnsType } from "antd/es/table";
 import { api, json } from "../api";
 import type { AuditRecord, ServerEntry } from "../types";
 import { useResource } from "../lib/use-resource";
+import { useWorkspaces } from "../lib/use-workspaces";
+import { WorkspaceLabels } from "../components/WorkspaceAccess";
 import { errorText, formatCompactTime } from "../lib/utils";
 import { AppTable } from "../components/AppTable";
 import { Feedback, Status } from "../components/Feedback";
@@ -54,7 +56,9 @@ const connectionOptions = [
   { value: "unchecked", label: "尚未检测" },
 ];
 
-export default function Servers() {
+export default function Servers({ onManageWorkspaces }: { onManageWorkspaces: () => void }) {
+  const workspaceResource = useWorkspaces();
+  const workspaces = workspaceResource.data.workspaces;
   const { data, loading, error, reload } = useResource<{
     servers: ServerEntry[];
   }>("/api/servers", { servers: [] });
@@ -99,6 +103,10 @@ export default function Servers() {
     setTag("");
     setConnection("");
   }
+  function refreshList() {
+    reload();
+    workspaceResource.reload();
+  }
   function serverSaved() {
     if (!hasServers) clearFilters();
     const alias = editor?.alias;
@@ -110,7 +118,7 @@ export default function Servers() {
       });
     setEditor(undefined);
     setDetails(null);
-    reload();
+    refreshList();
     setMessage("服务器配置已保存。");
   }
   async function test(server: ServerEntry) {
@@ -166,7 +174,7 @@ export default function Servers() {
     {
       key: "alias",
       title: "服务器 / 环境",
-      width: "26%",
+      width: 200,
       render: (_, server) => (
         <Flex vertical gap={2} align="center">
           <Button
@@ -189,9 +197,13 @@ export default function Servers() {
       ),
     },
     {
+      key: "workspaces", title: "工作空间", width: 170,
+      render: (_, server) => <WorkspaceLabels ids={server.workspace_ids} workspaces={workspaces} />,
+    },
+    {
       key: "host",
       title: "主机端点",
-      width: "31%",
+      width: 240,
       render: (_, server) => `${server.host}:${server.port}`,
     },
     {
@@ -232,6 +244,7 @@ export default function Servers() {
         <ServerDetails
           key={details.alias}
           server={details}
+          workspaces={workspaces}
           check={checks[details.alias]}
           busy={!!busy}
           onBack={() => setDetails(null)}
@@ -253,7 +266,7 @@ export default function Servers() {
                 onRetry={reload}
               />
             ) : (
-              <ServerEditor editing={null} onSaved={serverSaved} />
+              <ServerEditor onManageWorkspaces={onManageWorkspaces} editing={null} onSaved={serverSaved} />
             )
           ) : (
             <Card>
@@ -291,7 +304,7 @@ export default function Servers() {
                   aria-label="刷新服务器"
                   loading={loading}
                   icon={<RefreshCw size={15} aria-hidden="true" />}
-                  onClick={reload}
+                  onClick={refreshList}
                 />
                 <Typography.Text
                   type="secondary"
@@ -308,6 +321,8 @@ export default function Servers() {
                 </Button>
               </Flex>
               <Feedback message={error} />
+              <Feedback message={workspaceResource.error ? `工作空间加载失败：${workspaceResource.error}` : ""} />
+              {workspaceResource.error && <Button onClick={workspaceResource.reload} style={{ marginBottom: 16 }}>重试加载工作空间</Button>}
               {error && <Button onClick={reload}>重试</Button>}
               {!filtered.length && !loading && !error ? (
                 <ListNotice
@@ -324,7 +339,7 @@ export default function Servers() {
                   rowKey="alias"
                   loading={loading}
                   tableLayout="fixed"
-                  scroll={{ x: 800 }}
+                  scroll={{ x: 1030 }}
                   onRow={(server) => ({
                     onClick: () => openDetails(server),
                     style: { cursor: "pointer" },
@@ -338,6 +353,7 @@ export default function Servers() {
       {editor !== undefined && (
         <ServerEditor
           editing={editor}
+          onManageWorkspaces={onManageWorkspaces}
           onClose={() => setEditor(undefined)}
           onSaved={serverSaved}
         />

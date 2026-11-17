@@ -1,3 +1,5 @@
+import { isTokenUsable } from "../lib/identity";
+import { useTokenClock } from "../lib/use-token-clock";
 import { useEffect, useState } from "react";
 import { Activity, ArrowRight, CircleAlert, Network, Server } from "lucide-react";
 import { Button, Col, Row } from "antd";
@@ -62,7 +64,8 @@ export default function Overview({
   const metricError = [
     ...new Set([servers, tokens, failures].map((resource) => resource.error).filter(Boolean)),
   ].join("；");
-  const enabledTokens = tokens.data.tokens.filter((token) => token.enabled).length;
+  const tokenNow = useTokenClock(tokens.data.tokens);
+  const enabledTokens = tokens.data.tokens.filter((token) => isTokenUsable(token, tokenNow)).length;
   const number = (
     value: number,
     resource: { loading: boolean; error: string },
@@ -105,6 +108,7 @@ export default function Overview({
   const callItems: RecentMcpCall[] = calls.data.records.map((record) => ({
     id: record.id,
     token: record.token_name || record.token_id || record.user || "历史调用",
+    workspace: record.workspace_name || record.workspace_id || undefined,
     target: record.server || "网关",
     tool: record.tool || "—",
     status: record.status,

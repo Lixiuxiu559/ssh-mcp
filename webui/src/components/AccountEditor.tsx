@@ -5,6 +5,7 @@ import type { User } from "../console-types";
 import { errorText } from "../lib/utils";
 import { AppModal } from "./AppModal";
 import { Feedback } from "./Feedback";
+import { characterLengthRule, passwordLengthRule } from "../lib/identity";
 
 export type AccountEditorMode = "profile" | "password";
 interface AccountValues {
@@ -82,6 +83,7 @@ export function AccountEditor({
         layout="vertical"
         disabled={busy}
         onFinish={submit}
+        scrollToFirstError={{ focus: true }}
         initialValues={{ display_name: user.display_name }}
       >
         <Form.Item label="用户名">
@@ -94,13 +96,12 @@ export function AccountEditor({
               label="新密码"
               rules={[
                 { required: true, message: "请输入新密码" },
-                { min: 10, message: "密码至少需要 10 位" },
+                passwordLengthRule(),
               ]}
             >
               <Input.Password
-                maxLength={1024}
                 autoComplete="new-password"
-                placeholder="至少 10 位"
+                placeholder="至少 6 位"
               />
             </Form.Item>
             <Form.Item
@@ -119,7 +120,6 @@ export function AccountEditor({
               ]}
             >
               <Input.Password
-                maxLength={1024}
                 autoComplete="new-password"
                 placeholder="再次输入新密码"
               />
@@ -129,10 +129,9 @@ export function AccountEditor({
           <Form.Item
             name="display_name"
             label="显示名称"
-            rules={[{ max: 128, message: "显示名称不能超过 128 个字符" }]}
+            rules={[characterLengthRule(128, "显示名不能超过 128 个字符")]}
           >
             <Input
-              maxLength={128}
               autoComplete="nickname"
               placeholder="输入显示名称"
             />

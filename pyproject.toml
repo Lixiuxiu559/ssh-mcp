@@ -8,6 +8,7 @@ dependencies = [
     "fastmcp==4.1.4",
     # [bcrypt]：支持带口令的 OpenSSH 新格式私钥（无 bcrypt 时仅传统 PEM 口令私钥可用）
     "asyncssh[bcrypt]>=2.17,<3",
+    "cryptography>=45",
     "pyyaml>=6.0.1",
     "pydantic>=2.7",
     "python-dotenv>=1.0",

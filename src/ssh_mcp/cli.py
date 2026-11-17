@@ -67,12 +67,6 @@ def main() -> None:
         print("无法打开运行数据，请检查配置路径、目录权限与磁盘空间", file=sys.stderr)
         raise SystemExit(1) from None
 
-    if state.identity.setup_required:
-        print(
-            "尚未创建登录账号。请在管理页设置用户名与密码，\n"
-            f"一次性初始化码请从本机文件读取: {state.identity.setup_key_path}",
-            file=sys.stderr,
-        )
     mcp.run(
         transport="http",
         host=state.config.server.host,

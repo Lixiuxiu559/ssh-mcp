@@ -17,6 +17,7 @@ import type { Session } from "../console-types";
 import { ThemeControl } from "../components/theme-controls";
 import { RepositoryLink } from "../components/RepositoryLink";
 import { errorText } from "../lib/utils";
+import { characterLengthRule, passwordLengthRule } from "../lib/identity";
 
 interface LoginValues {
   username: string;
@@ -150,6 +151,7 @@ export function ConsoleLogin({
                 className="login-form"
                 layout="vertical"
                 onFinish={submit}
+                scrollToFirstError={{ focus: true }}
                 disabled={busy}
                 autoComplete="on"
               >
@@ -169,11 +171,13 @@ export function ConsoleLogin({
                 <Form.Item
                   name="username"
                   label="用户名"
-                  rules={[{ required: true, message: "请输入用户名" }]}
+                  rules={[
+                    { required: true, whitespace: true, message: "请输入用户名" },
+                    characterLengthRule(128, "用户名须为 1–128 个字符"),
+                  ]}
                 >
                   <Input
                     autoComplete="username"
-                    maxLength={64}
                     placeholder="输入用户名"
                   />
                 </Form.Item>
@@ -182,15 +186,12 @@ export function ConsoleLogin({
                   label="密码"
                   rules={[
                     { required: true, message: "请输入密码" },
-                    ...(setup
-                      ? [{ min: 10, message: "密码至少需要 10 位" }]
-                      : []),
+                    passwordLengthRule(setup ? 6 : 0),
                   ]}
                 >
                   <Input.Password
                     autoComplete={setup ? "new-password" : "current-password"}
-                    maxLength={1024}
-                    placeholder={setup ? "至少 10 位" : "输入密码"}
+                    placeholder={setup ? "至少 6 位" : "输入密码"}
                   />
                 </Form.Item>
                 {setup && (

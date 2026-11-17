@@ -13,24 +13,17 @@ from types import SimpleNamespace
 
 import asyncssh
 import pytest
+from fastmcp.server.auth import AccessToken
+from fastmcp.server.dependencies import get_access_token
 
+from ssh_mcp import audit, authorization
 from ssh_mcp.config import ConfigFile
 from ssh_mcp.server import create_mcp
-
-_ALICE_TOKEN = "tok-alice"
-_BOB_TOKEN = "tok-bob"
 
 _CONFIG = """
 server:
   host: 127.0.0.1
   port: 8808
-auth:
-  users:
-    - username: alice
-      token: ${TEST_ALICE_TOKEN}
-      admin: true
-    - username: bob
-      token: ${TEST_BOB_TOKEN}
 audit:
   path: __AUDIT_PATH__/audit.db
 limits:
@@ -221,8 +214,6 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Harness:
 
 def make_mcp_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """写临时配置文件并构建 mcp/state（含环境变量，独立于 harness 可用）。"""
-    monkeypatch.setenv("TEST_ALICE_TOKEN", _ALICE_TOKEN)
-    monkeypatch.setenv("TEST_BOB_TOKEN", _BOB_TOKEN)
     monkeypatch.setenv("TEST_DB1_PASSWORD", "db-pw")
 
     def _make(extra_config: str = "") -> SimpleNamespace:
@@ -231,7 +222,26 @@ def make_mcp_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         config_path.write_text(config_text, encoding="utf-8")
         cfg_file = ConfigFile(config_path)
         mcp, state = create_mcp(cfg_file)
-        return SimpleNamespace(mcp=mcp, state=state, cfg_file=cfg_file, config_path=config_path)
+        workspace = state.identity.create_workspace("测试空间")
+        tokens = {}
+        for name in ("alice", "bob"):
+            value, _item = state.identity.create_token(name, "fixture", workspace_id=workspace["id"])
+            tokens[name] = value
+        access = AccessToken(token=tokens["alice"], client_id=state.identity.verify_token(
+            tokens["alice"])["id"], scopes=[])
+
+        def authenticated_context():
+            # In-memory clients have no HTTP authentication context. Tests explicitly
+            # install a persisted token; real HTTP requests still use their own token.
+            return get_access_token() or access
+
+        monkeypatch.setattr(authorization, "get_access_token", authenticated_context)
+        monkeypatch.setattr(audit, "get_access_token", authenticated_context)
+        for entry in list(state.config.servers):
+            raw = next(row for row in cfg_file.raw["servers"] if row["alias"] == entry.alias)
+            state.replace_config(cfg_file.upsert_server({**raw, "workspace_ids": [workspace["id"]]}))
+        return SimpleNamespace(mcp=mcp, state=state, cfg_file=cfg_file, config_path=config_path,
+                               workspace=workspace, tokens=tokens)
 
     return _make
 

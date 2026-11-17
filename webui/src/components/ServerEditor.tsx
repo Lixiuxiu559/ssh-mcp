@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import type { ServerEntry } from "../types";
 import { api, json } from "../api";
+import { useWorkspaces } from "../lib/use-workspaces";
+import { WorkspaceSelectField } from "./WorkspaceAccess";
 import { SetupPanel } from "./ListStates";
 import { Feedback } from "./Feedback";
 import { AppModal } from "./AppModal";
@@ -36,6 +38,7 @@ const credentials = {
 
 interface ServerForm {
   alias: string;
+  workspace_ids: string[];
   host: string;
   port: number;
   username: string;
@@ -51,12 +54,15 @@ export function ServerEditor({
   editing,
   onClose,
   onSaved,
+  onManageWorkspaces,
 }: {
   editing: ServerEntry | null;
   onClose?: () => void;
   onSaved: () => void;
+  onManageWorkspaces?: () => void;
 }) {
   const [form] = Form.useForm<ServerForm>();
+  const workspaceResource = useWorkspaces();
   const type =
     Form.useWatch("type", form) ??
     editing?.credential_type ??
@@ -72,6 +78,7 @@ export function ServerEditor({
   function entry(values: ServerForm) {
     const result: Record<string, unknown> = {
       alias: values.alias,
+      workspace_ids: values.workspace_ids || [],
       host: values.host,
       port: values.port,
       username: values.username,
@@ -178,6 +185,7 @@ export function ServerEditor({
 
   const connection = (
     <>
+      <WorkspaceSelectField multiple disabled={!!busy} workspaces={workspaceResource.data.workspaces} loading={workspaceResource.loading} error={workspaceResource.error} onRetry={workspaceResource.reload} onManage={onManageWorkspaces} />
       <Form.Item
         name="alias"
         label="服务器别名"
@@ -377,6 +385,7 @@ export function ServerEditor({
       scrollToFirstError
       initialValues={{
         alias: editing?.alias || "",
+        workspace_ids: editing?.workspace_ids || [],
         host: editing?.host || "",
         port: editing?.port || 22,
         username: editing?.username || "",

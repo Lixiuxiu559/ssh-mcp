@@ -113,3 +113,44 @@ async def test_agent_credential_type_removed(make_mcp):
     msg = str(exc.value)
     assert "agent 凭据类型已移除" in msg
     assert "private_key_file" in msg
+
+
+@pytest.mark.parametrize("workspace_ids", [None, "space", [123], [""], {"id": "x"}])
+async def test_workspace_ids_are_strict_and_unknown_ids_do_not_persist(make_mcp, workspace_ids):
+    gw = make_mcp()
+    before = gw.config_path.read_text()
+    with pytest.raises(ConfigError):
+        await gw.state.upsert_server({"alias": "db-1", "host": "h", "username": "u",
+                                      "workspace_ids": workspace_ids})
+    assert gw.config_path.read_text() == before
+    with pytest.raises(ConfigError):
+        await gw.state.upsert_server({"alias": "db-1", "host": "h", "username": "u",
+                                      "workspace_ids": ["not-a-workspace"]})
+    assert gw.config_path.read_text() == before
+
+
+async def test_workspace_membership_is_explicit_and_put_omission_preserves(make_mcp):
+    gw = make_mcp()
+    await gw.state.upsert_server({"alias": "db-1", "host": "changed", "username": "ops"})
+    assert gw.state.config.get_server("db-1").workspace_ids == [gw.workspace["id"]]
+    await gw.state.upsert_server({"alias": "db-1", "host": "changed", "username": "ops",
+                                  "workspace_ids": []})
+    assert gw.state.config.get_server("db-1").workspace_ids == []
+    await gw.state.upsert_server({"alias": "unassigned", "host": "h", "username": "u",
+                                  "credential": {"type": "password", "password": "fixture"}})
+    assert gw.state.config.get_server("unassigned").workspace_ids == []
+
+
+async def test_failed_config_save_rolls_back_membership(make_mcp, monkeypatch):
+    gw = make_mcp()
+    old = gw.state.config.get_server("db-1").workspace_ids
+
+    def fail():
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(gw.cfg_file, "save", fail)
+    with pytest.raises(OSError):
+        await gw.state.upsert_server({"alias": "db-1", "host": "changed", "username": "ops",
+                                      "workspace_ids": []})
+    assert gw.state.config.get_server("db-1").workspace_ids == old
+    assert gw.cfg_file.load().get_server("db-1").workspace_ids == old

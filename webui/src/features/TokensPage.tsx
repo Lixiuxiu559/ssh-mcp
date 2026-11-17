@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   Trash2,
   Code2,
@@ -20,12 +20,14 @@ import {
   Input,
   Space,
   Switch,
+  Tag,
   Typography,
   Tooltip,
 } from "antd";
 import { api, json } from "../api";
-import type { TokenEntry, User } from "../console-types";
+import type { TokenEntry, User, WorkspaceEntry } from "../console-types";
 import { useResource } from "../lib/use-resource";
+import { useWorkspaces } from "../lib/use-workspaces";
 import { errorText, formatTime, copyText } from "../lib/utils";
 import { DataTable, type TableColumn } from "../components/DataTable";
 import { Feedback } from "../components/Feedback";
@@ -36,36 +38,54 @@ import {
 } from "../components/ListStates";
 import { PageHeading } from "../components/PageHeading";
 import { AppModal } from "../components/AppModal";
+import { WorkspaceLabels, WorkspaceSelectField } from "../components/WorkspaceAccess";
+import { McpConnectionExamples } from "../components/McpConnectionExamples";
+import { characterLengthRule, expiryFromLocal, expiryPatch, expiryRule, isTokenExpired, isTokenUsable, localExpiry } from "../lib/identity";
+import { useTokenClock } from "../lib/use-token-clock";
 
 const { Text } = Typography;
 export interface TokensPageProps {
   clientName: string;
   exampleUrl: string;
   descriptionPlaceholder: string;
+  onManageWorkspaces?: () => void;
 }
 
 interface TokenValues {
   name: string;
   description?: string;
+  workspace_id: string;
+  expires_at?: string;
 }
 
 function TokenEditor({
   item,
   onClose,
   onSaved,
-  configTemplate,
+  connectionExamples,
   descriptionPlaceholder,
+  workspaces,
+  workspaceLoading,
+  workspaceError,
+  onReloadWorkspaces,
+  onManageWorkspaces,
 }: {
   item: TokenEntry | null;
-  configTemplate: string;
+  connectionExamples: ReactNode;
   descriptionPlaceholder: string;
+  workspaces: WorkspaceEntry[];
+  workspaceLoading: boolean;
+  workspaceError: string;
+  onReloadWorkspaces: () => void;
+  onManageWorkspaces?: () => void;
   onClose?: () => void;
   onSaved: (value?: { token: string; item: TokenEntry }) => void;
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const formId = useId();
-  async function submit({ name, description = "" }: TokenValues) {
+  const originalExpiry = localExpiry(item?.expires_at);
+  async function submit({ name, description = "", workspace_id, expires_at }: TokenValues) {
     if (busy) return;
     setError("");
     setBusy(true);
@@ -73,14 +93,14 @@ function TokenEditor({
       if (item) {
         await api(
           `/api/tokens/${encodeURIComponent(item.id)}`,
-          json("PATCH", { name, description }),
+          json("PATCH", { name, description, ...expiryPatch(expires_at, item.expires_at) }),
         );
         onSaved();
       } else {
         onSaved(
           await api<{ token: string; item: TokenEntry }>(
             "/api/tokens",
-            json("POST", { name, description }),
+            json("POST", { name, description, workspace_id, expires_at: expiryFromLocal(expires_at || "") }),
           ),
         );
       }
@@ -96,22 +116,31 @@ function TokenEditor({
       layout="vertical"
       disabled={busy}
       onFinish={submit}
+      scrollToFirstError={{ focus: true }}
       initialValues={{
         name: item?.name || "",
         description: item?.description || "",
+        workspace_id: item?.workspace_id,
+        expires_at: originalExpiry,
       }}
     >
       <Feedback message={error} />
+      {item ? (
+        <Form.Item label="工作空间" extra="Token 创建后不可更改所属工作空间。">
+          <WorkspaceLabels ids={[item.workspace_id]} workspaces={workspaces} />
+        </Form.Item>
+      ) : (
+        <WorkspaceSelectField disabled={busy} workspaces={workspaces} loading={workspaceLoading} error={workspaceError} onRetry={onReloadWorkspaces} onManage={onManageWorkspaces} />
+      )}
       <Form.Item
         name="name"
         label="Token 名称"
         rules={[
           { required: true, whitespace: true, message: "请输入 Token 名称" },
-          { max: 100 },
+          characterLengthRule(128, "Token 名称须为 1–128 个字符"),
         ]}
       >
         <Input
-          maxLength={100}
           placeholder="例如 codex-dev 或 ci-runner"
           autoComplete="off"
         />
@@ -119,13 +148,21 @@ function TokenEditor({
       <Form.Item
         name="description"
         label="用途说明（可选）"
-        rules={[{ max: 500 }]}
+        rules={[characterLengthRule(1000, "备注不能超过 1000 个字符")]}
       >
-        <Input maxLength={500} placeholder={descriptionPlaceholder} />
+        <Input placeholder={descriptionPlaceholder} />
+      </Form.Item>
+      <Form.Item
+        name="expires_at"
+        label="到期时间（可选）"
+        extra="留空长期有效；按当前浏览器时区设置。到期后停止 MCP 调用，可重新设置未来时间。"
+        rules={[expiryRule(originalExpiry)]}
+      >
+        <Input type="datetime-local" step={1} />
       </Form.Item>
       {!item && (
         <Text type="secondary">
-          Token 明文只在创建后显示一次，请及时复制保存。
+          创建后可在列表中复制 Token，或查看 Claude Code、Codex 接入配置。
         </Text>
       )}
     </Form>
@@ -136,6 +173,7 @@ function TokenEditor({
       htmlType="submit"
       form={formId}
       loading={busy}
+      disabled={!item && (workspaceLoading || !!workspaceError || !workspaces.length)}
       icon={item ? undefined : <Plus size={15} aria-hidden="true" />}
     >
       {item ? "保存修改" : "创建 Token"}
@@ -158,9 +196,7 @@ function TokenEditor({
               <Code2 size={17} aria-hidden="true" />
               客户端配置示例
             </Typography.Title>
-            <pre className="setup-code">
-              <code>{configTemplate}</code>
-            </pre>
+            {connectionExamples}
           </Col>
         </Row>
       </SetupPanel>
@@ -188,23 +224,45 @@ function TokenEditor({
   );
 }
 
-function connectionConfig(
-  clientName: string,
-  token: string,
-  url = new URL("mcp", location.href).href,
-) {
-  return JSON.stringify(
-    {
-      mcpServers: {
-        [clientName]: {
-          type: "http",
-          url,
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      },
-    },
-    null,
-    2,
+function TokenConnection({
+  item,
+  clientName,
+}: {
+  item: TokenEntry;
+  clientName: string;
+}) {
+  const [token, setToken] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(item.can_copy);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!item.can_copy) return;
+    let active = true;
+    setLoading(true);
+    setError("");
+    api<{ token: string }>(
+      `/api/tokens/${encodeURIComponent(item.id)}/reveal`, json("POST"),
+    ).then((result) => {
+      if (active) setToken(result.token);
+    }).catch((error) => {
+      if (active) setError(errorText(error));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [item.id, item.can_copy, attempt]);
+  if (loading || error) {
+    return <ResourceStatus loading={loading} error={error} onRetry={() => setAttempt((value) => value + 1)} />;
+  }
+  return (
+    <Flex vertical gap={12}>
+      {!item.can_copy && (
+        <Typography.Text type="secondary">
+          此 Token 创建时只保存了校验值。请在模板中填入已保存的 Token，或创建新 Token。
+        </Typography.Text>
+      )}
+      <McpConnectionExamples serverName={clientName} token={token || "<MCP_TOKEN>"} url={new URL("mcp", location.href).href} />
+    </Flex>
   );
 }
 
@@ -212,14 +270,24 @@ export default function TokensPage({
   clientName,
   exampleUrl,
   descriptionPlaceholder,
+  onManageWorkspaces,
 }: TokensPageProps) {
-  const configTemplate = connectionConfig(clientName, "<MCP_TOKEN>", exampleUrl);
+  const connectionExamples = <McpConnectionExamples serverName={clientName} url={exampleUrl} />;
   const { data, setData, loading, error, reload } = useResource<{
     tokens: TokenEntry[];
   }>("/api/tokens", { tokens: [] });
   const { data: people } = useResource<{ users: User[] }>("/api/users", {
     users: [],
   });
+  const workspaceResource = useWorkspaces();
+  const workspaces = workspaceResource.data.workspaces;
+  const workspaceProps = {
+    workspaces,
+    workspaceLoading: workspaceResource.loading,
+    workspaceError: workspaceResource.error,
+    onReloadWorkspaces: workspaceResource.reload,
+    onManageWorkspaces,
+  };
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<TokenEntry | null | undefined>(
     undefined,
@@ -232,20 +300,28 @@ export default function TokensPage({
   const [deleting, setDeleting] = useState<TokenEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [updatingId, setUpdatingId] = useState("");
+  const [copyingId, setCopyingId] = useState("");
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const managedTokens = data.tokens.filter((token) => !token.revoked);
+  const now = useTokenClock(data.tokens);
   const hasTokens = managedTokens.length > 0;
-  const activeCount = managedTokens.filter((token) => token.enabled).length;
+  const activeCount = managedTokens.filter((token) => isTokenUsable(token, now)).length;
+  const expiredCount = managedTokens.filter((token) => isTokenExpired(token, now)).length;
+  const disabledCount = managedTokens.filter((token) => !token.enabled && !isTokenExpired(token, now)).length;
   const filtered = managedTokens.filter((token) =>
-    `${token.name} ${token.description} ${token.id}`
+    `${token.name} ${token.description} ${token.id} ${workspaces.find((workspace) => workspace.id === token.workspace_id)?.name || ""}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
+  function refreshList() {
+    reload();
+    workspaceResource.reload();
+  }
   function tokenSaved(value?: { token: string; item: TokenEntry }) {
     setEditor(undefined);
-    reload();
+    refreshList();
     if (value) {
       setQuery("");
       setCreated(value);
@@ -262,6 +338,28 @@ export default function TokensPage({
       setCopyMessage("已复制到剪贴板。");
     } catch (error) {
       setCopyMessage(errorText(error));
+    }
+  }
+  async function copyToken(item: TokenEntry) {
+    if (copyingId || busy || updatingId) return;
+    setCopyingId(item.id);
+    setActionError("");
+    setMessage("");
+    try {
+      const result = await api<{ token: string }>(
+        `/api/tokens/${encodeURIComponent(item.id)}/reveal`, json("POST"),
+      );
+      try {
+        await copyText(result.token);
+        setMessage(`已复制 ${item.name} 的 Token。`);
+      } catch (error) {
+        setCreated({ token: result.token, item });
+        setCopyMessage(`${errorText(error)}。可选中下方 Token 手动复制。`);
+      }
+    } catch (error) {
+      setActionError(errorText(error));
+    } finally {
+      setCopyingId("");
     }
   }
   async function remove() {
@@ -334,6 +432,13 @@ export default function TokensPage({
       ),
     },
     {
+      id: "workspace",
+      width: 150,
+      header: "工作空间",
+      value: (row) => workspaces.find((workspace) => workspace.id === row.workspace_id)?.name || row.workspace_id,
+      render: (row) => <WorkspaceLabels ids={[row.workspace_id]} workspaces={workspaces} />,
+    },
+    {
       id: "prefix",
       width: 148,
       header: "凭证标识",
@@ -350,7 +455,7 @@ export default function TokensPage({
       header: "状态",
       value: (row) => Number(row.enabled),
       render: (row) => (
-        <Switch
+          <Switch
           checked={row.enabled}
           checkedChildren="启用"
           unCheckedChildren="禁用"
@@ -359,6 +464,18 @@ export default function TokensPage({
           disabled={loading || busy || !!updatingId}
           onChange={(enabled) => void setEnabled(row, enabled)}
         />
+      ),
+    },
+    {
+      id: "expires_at",
+      width: 170,
+      header: "到期时间",
+      value: (row) => row.expires_at ?? "",
+      render: (row) => (
+        <Flex vertical gap={4} align="center">
+          <span className="table-time">{row.expires_at ? formatTime(row.expires_at) : "长期有效"}</span>
+          {isTokenExpired(row, now) && <Tag color="warning">已到期</Tag>}
+        </Flex>
       ),
     },
     {
@@ -376,7 +493,7 @@ export default function TokensPage({
       header: "创建人",
       value: (row) => row.created_by ?? "",
       render: (row) => (
-        <Text title={row.created_by || undefined}>
+        <Text ellipsis style={{ maxWidth: "100%" }} title={people.users.find((user) => user.id === row.created_by)?.username || row.created_by || undefined}>
           {people.users.find((user) => user.id === row.created_by)?.username ||
             (row.created_by ? row.created_by.slice(0, 12) : "历史迁移")}
         </Text>
@@ -393,11 +510,24 @@ export default function TokensPage({
     },
     {
       id: "actions",
-      width: 144,
+      width: 210,
       fixed: "right",
       header: "操作",
       render: (row) => (
         <Space size={4}>
+          <Tooltip title={row.can_copy ? "复制 Token" : "此 Token 只保存了校验值，请创建新 Token 以启用复制"}>
+            <Button
+              type="text"
+              size="small"
+              aria-label={`复制 ${row.name} Token`}
+              icon={<Copy size={14} aria-hidden="true" />}
+              loading={copyingId === row.id}
+              disabled={!row.can_copy || loading || busy || !!updatingId || !!copyingId}
+              onClick={() => void copyToken(row)}
+            >
+              复制
+            </Button>
+          </Tooltip>
           <Button
             type="text"
             size="small"
@@ -450,8 +580,9 @@ export default function TokensPage({
           <TokenEditor
             item={null}
             onSaved={tokenSaved}
-            configTemplate={configTemplate}
+            connectionExamples={connectionExamples}
             descriptionPlaceholder={descriptionPlaceholder}
+            {...workspaceProps}
           />
         )
       ) : (
@@ -465,7 +596,7 @@ export default function TokensPage({
             <Input
               style={{ width: 280 }}
               aria-label="搜索 Token"
-              placeholder="搜索名称、用途或标识…"
+              placeholder="搜索名称、用途、空间或标识…"
               prefix={<Search size={15} aria-hidden="true" />}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -481,18 +612,20 @@ export default function TokensPage({
                 创建 Token
               </Button>
               <Text type="secondary">
-                启用 {activeCount} · 禁用 {managedTokens.length - activeCount}
+                可用 {activeCount} · 禁用 {disabledCount} · 已到期 {expiredCount}
               </Text>
               <Button
                 type="text"
                 icon={<RefreshCw size={14} aria-hidden="true" />}
                 disabled={loading || busy || !!updatingId}
-                onClick={reload}
+                onClick={refreshList}
               >
                 刷新
               </Button>
             </Space>
           </Flex>
+          <Feedback message={workspaceResource.error ? `工作空间加载失败：${workspaceResource.error}` : ""} />
+          {workspaceResource.error && <Button onClick={workspaceResource.reload} style={{ marginBottom: 16 }}>重试加载工作空间</Button>}
           {!filtered.length && !loading && !error ? (
             <ListNotice
               title="没有匹配的 Token"
@@ -503,7 +636,7 @@ export default function TokensPage({
             <DataTable
               columns={columns}
               fixedLayout
-              minWidth={1040}
+              minWidth={1426}
               data={filtered}
               rowKey={(row) => row.id}
               loading={loading}
@@ -516,8 +649,9 @@ export default function TokensPage({
       {editor !== undefined && (
         <TokenEditor
           item={editor}
-          configTemplate={configTemplate}
+          connectionExamples={connectionExamples}
           descriptionPlaceholder={descriptionPlaceholder}
+          {...workspaceProps}
           onClose={() => setEditor(undefined)}
           onSaved={tokenSaved}
         />
@@ -526,7 +660,7 @@ export default function TokensPage({
         opened={!!created}
         onClose={closeCreated}
         title="保存你的 MCP Token"
-        description="明文仅显示这一次，关闭后无法再次读取。"
+        description="可在 Token 列表中再次复制，或打开接入配置。"
         size="lg"
         footer={
           <Button type="primary" onClick={closeCreated}>
@@ -536,6 +670,7 @@ export default function TokensPage({
       >
         {created && (
           <Flex vertical gap={16}>
+            <Typography.Paragraph style={{ marginBottom: 0 }}>工作空间：{workspaces.find((workspace) => workspace.id === created.item.workspace_id)?.name || created.item.workspace_id}。仅可访问该空间内的资源。</Typography.Paragraph>
             <Form layout="vertical">
               <Form.Item label={created.item.name}>
                 <Input.TextArea
@@ -552,30 +687,9 @@ export default function TokensPage({
               >
                 复制 Token
               </Button>
-              <Form.Item
-                label="客户端接入配置"
-                style={{ marginTop: 20, marginBottom: 0 }}
-              >
-                <Input.TextArea
-                  className="mono"
-                  readOnly
-                  rows={10}
-                  value={connectionConfig(clientName, created.token)}
-                  spellCheck={false}
-                />
-              </Form.Item>
             </Form>
-            <Space>
-              <Button
-                icon={<Copy size={15} aria-hidden="true" />}
-                onClick={() => void copy(connectionConfig(clientName, created.token))}
-              >
-                复制配置
-              </Button>
-              <Text type="secondary" role="status">
-                {copyMessage}
-              </Text>
-            </Space>
+            <Text type="secondary" role="status">{copyMessage}</Text>
+            <McpConnectionExamples serverName={clientName} token={created.token} url={new URL("mcp", location.href).href} />
           </Flex>
         )}
       </AppModal>
@@ -583,35 +697,13 @@ export default function TokensPage({
         opened={!!configItem}
         onClose={() => setConfigItem(null)}
         title={`接入配置 · ${configItem?.name ?? ""}`}
-        description="将示例 URL 和 <MCP_TOKEN> 替换为网关地址和已保存的 Token。"
+        description="选择客户端后，将配置合并到对应文件。配置使用当前网关地址。"
         size="lg"
-        footer={
-          <Flex justify="space-between" align="center" gap={16}>
-            <Button
-              icon={<Copy size={15} aria-hidden="true" />}
-              onClick={() => void copy(configTemplate)}
-            >
-              复制配置模板
-            </Button>
-            <Text type="secondary" role="status">
-              {copyMessage}
-            </Text>
-          </Flex>
-        }
       >
-        <Form layout="vertical">
-          <Form.Item label="HTTP 配置示例" style={{ marginBottom: 0 }}>
-            <Input.TextArea
-              className="mono"
-              rows={10}
-              readOnly
-              value={configTemplate}
-              spellCheck={false}
-            />
-          </Form.Item>
-        </Form>
+        {configItem && <TokenConnection key={configItem.id} item={configItem} clientName={clientName} />}
         <Typography.Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0 }}>
-          凭证标识：{configItem?.id}。服务不返回已创建 Token 的明文；若丢失，请创建新 Token。
+          工作空间：{workspaces.find((workspace) => workspace.id === configItem?.workspace_id)?.name || configItem?.workspace_id}。
+          凭证标识：{configItem?.id}。
         </Typography.Paragraph>
       </AppModal>
       <AppModal

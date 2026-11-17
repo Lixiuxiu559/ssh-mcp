@@ -1584,6 +1584,7 @@ version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "asyncssh", extra = ["bcrypt"] },
+    { name = "cryptography" },
     { name = "fastmcp" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -1601,6 +1602,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncssh", extras = ["bcrypt"], specifier = ">=2.17,<3" },
+    { name = "cryptography", specifier = ">=45" },
     { name = "fastmcp", specifier = "==4.1.4" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "python-dotenv", specifier = ">=1.0" },

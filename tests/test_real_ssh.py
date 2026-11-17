@@ -19,7 +19,7 @@ class LocalServer(asyncssh.SSHServer):
         return username == "integration" and password == "local-test-credential"
 
 
-async def test_real_ssh_command_and_target_audit(tmp_path):
+async def test_real_ssh_command_and_target_audit(tmp_path, monkeypatch):
     async def process(session):
         assert session.command == "printf integration"
         session.stdout.write("integration-ok\n")
@@ -50,6 +50,15 @@ async def test_real_ssh_command_and_target_audit(tmp_path):
             )
         )
         mcp, state = create_mcp(ConfigFile(config))
+        from fastmcp.server.auth import AccessToken
+
+        from ssh_mcp import audit, authorization
+        workspace = state.identity.create_workspace("本地协议验证")
+        value, item = state.identity.create_token("integration", "fixture", workspace_id=workspace["id"])
+        await state.upsert_server({**state.cfg_file.raw["servers"][0], "workspace_ids": [workspace["id"]]})
+        token = AccessToken(token=value, client_id=item["id"], scopes=[])
+        monkeypatch.setattr(authorization, "get_access_token", lambda: token)
+        monkeypatch.setattr(audit, "get_access_token", lambda: token)
         async with Client(mcp) as client:
             result = await client.call_tool(
                 "exec_command", {"server": "loopback", "command": "printf integration"}
